@@ -1,9 +1,9 @@
-from src.local import Local
+from src.path import Path
 import unittest
 
 class TestOptions(unittest.TestCase):
     def testCorrect(this):
-        p = Local(["--resync", "/home/tiedl25/Bidir", "GoogleDrive:"])
+        p = Path(["--resync", "/home/tiedl25/Bidir", "GoogleDrive:"])
         this.assertEqual(p._path, "/home/tiedl25/Bidir")
         this.assertEqual(p._remote, "GoogleDrive")
         this.assertEqual(p._remote_path, "")

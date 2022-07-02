@@ -1,10 +1,10 @@
-import main
+from src.local import Local
 import unittest
 
 class TestOptions(unittest.TestCase):
     @classmethod
     def setUpClass(this):
-        this.p = main.Psync(["--resync", "/home/tiedl25/Bidir", "GoogleDrive:"])
+        this.p = Local(["--resync", "/home/tiedl25/Bidir", "GoogleDrive:"])
 
     def testFileCreate(this):
         this.assertEqual(this.p._options(['IN_CREATE'], 'test', '/home/tiedl25/Bidir/Luxor'), 

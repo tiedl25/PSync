@@ -4,14 +4,12 @@ import inotify.adapters
 import sys
 import re
 
-class Psync:
-    _flags = {"resync" : False, "bidirsync" : False}
-    _path = ""
-    _remote = ""
-    _remote_path = ""
-
-    def __init__(this, args):
-        this._norm_arguments(args)
+class Local:
+    def __init__(this, path, remote, remote_path, flags):
+        this._path = path
+        this._remote = remote
+        this._remote_path = remote_path
+        this._flags = flags
         this._intfy = inotify.adapters.InotifyTree(this._path, mask=(inotify.constants.IN_MOVE | 
                                                                     inotify.constants.IN_DELETE | 
                                                                     inotify.constants.IN_CREATE | 
@@ -36,26 +34,6 @@ class Psync:
             str = """rclone copy {}/{} {}/{}""".format(dir_path, filename, dest, filename)
 
         return str
-    
-    def _norm_arguments(this, args):
-        re_arg = "(--[a-z]*[\s])" # e.g. --resync
-        re_path = "(/[a-zA-Z0-9_\s]+)" # e.g. /home/user/Documents
-        re_rem = "[a-zA-Z0-9]+:?" # e.g. GoogleDrive:
-
-        if re.fullmatch("{}*{}+[\s]{}(:{{1}}{})?".format(re_arg, re_path, re_rem, re_path), " ".join(args)) == None:
-            print("Format of request isn't correct")
-            print("Type psync -h odr psync --help for examples")
-            quit()
-
-        this._path = args[len(args)-2]
-
-        sp = re.split(":", args[len(args)-1])
-        this._remote = sp[0]
-        this._remote_path = sp[1]
-        
-
-        for i in (0, len(args)-3):
-            this._flags[re.sub("--", "", args[i])] = True
 
     def run(this):
         for event in this._intfy.event_gen(yield_nones=False):
@@ -64,15 +42,3 @@ class Psync:
             str = this._options(type_names, filename, dirpath)
             print(str)
             #os.system(str)
-
-
-
-def main():
-    p = Psync(["--resync", "/home/tiedl25/Bidir", "GoogleDrive:"])
-    #p = Psync(sys.argv)
-
-    p.run()
-
-
-if __name__ == '__main__':
-    main()

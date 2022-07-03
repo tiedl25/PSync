@@ -1,7 +1,6 @@
 from local import Local
 from path import Path
 from remote import Remote
-from remote import GoogleDrive
 import threading
 
 def main():

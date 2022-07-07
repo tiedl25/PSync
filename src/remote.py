@@ -4,12 +4,17 @@ import time
 
 
 class Remote:
+    def __init__(this, path, remote, remote_path):
+        this._path = path
+        this._remote = remote
+        this._remote_path = remote_path
+
     def sync(this):
-        print("rclone sync GoogleDrive:Bidir /home/tiedl25/Bidir")
-        #os.system("rclone sync GoogleDrive:Bidir /home/tiedl25/Bidir")
+        print("rclone sync {}:{} {}".format(this._remote, this._remote_path, this._path))
+        #os.system("rclone sync {}:{} {}".format(this._remote, this._remote_path, this._path))
 
     def run(this):
-        schedule.every(5).minutes.do(this.sync)
+        schedule.every(0.1).minutes.do(this.sync)
 
         while True:
             schedule.run_pending()

@@ -1,12 +1,13 @@
 import re
 import os
+import numpy as np
 
 class Path:
     _path = ""
     _remote = ""
     _remote_path = ""
     _remote_type = ""
-    _flags = {"resync" : False, "bidirsync" : False}
+    _flags = {"resync" : False, "help" : False, "h" : False, "init" : False, "backsync" : False}
 
     def __init__(this, args):
         this._check_path(args)
@@ -20,7 +21,7 @@ class Path:
 
         if re.fullmatch("{}*{}+[\s]{}(:{{1}}{})?".format(re_arg, re_path, re_rem, re_path), " ".join(args)) == None:
             print("Format of request isn't correct")
-            print("Type psync -h odr psync --help for examples")
+            print("Type psync -h or psync --help for examples")
             quit()
 
     def _norm_arguments(this, args):
@@ -28,10 +29,16 @@ class Path:
 
         sp = re.split(":", args[len(args)-1])
         this._remote = sp[0]
-        this._remote_path = sp[1]
+        this._remote_path = "/" + os.path.basename(this._path) if sp[1] == "" else sp[1]
 
-        for i in (0, len(args)-3):
-            this._flags[re.sub("--", "", args[i])] = True
+        if (len(args) > 2):
+            for i in (0, len(args)-3):
+                key = re.sub("--", "", args[i])
+                if key in this._flags:
+                    this._flags[key] = True
+                else:
+                    print("The argument is not valid. Type psync -h or psync --help for further information")
+                    quit()
 
     def _check_remote(this):
         output = os.popen("rclone listremotes --long")

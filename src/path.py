@@ -22,7 +22,7 @@ class Path:
         if re.fullmatch("{}*{}+[\s]{}(:{{1}}{})?".format(re_arg, re_path, re_rem, re_path), " ".join(args)) == None:
             print("Format of request isn't correct")
             print("Type psync -h or psync --help for examples")
-            quit()
+            os._exit(0)
 
     def _norm_arguments(this, args):
         this._path = args[len(args)-2]
@@ -38,7 +38,7 @@ class Path:
                     this._flags[key] = True
                 else:
                     print("The argument is not valid. Type psync -h or psync --help for further information")
-                    quit()
+                    os._exit(0)
 
     def _check_remote(this):
         output = os.popen("rclone listremotes --long")

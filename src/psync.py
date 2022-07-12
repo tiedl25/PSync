@@ -1,11 +1,13 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 from local import Local
 from path import Path
 from remote import Remote
 import threading
+import sys
 
 def main():
-    p = Path(["--help", "/home/tiedl25/Bidir", "GoogleDrive:"])
+    sys.argv.pop(0)
+    p = Path(sys.argv)
     path, remote, remote_path, flags = p.get_arguments()
     l = Local(path, remote, remote_path, flags)
     r = Remote(path, remote, remote_path)

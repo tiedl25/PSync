@@ -57,4 +57,4 @@ class Local:
 
             str = this._options(type_names, filename, dirpath)
             print(str)
-            #if str!="": os.system(str) 
+            if str!="": os.system(str) 

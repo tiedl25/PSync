@@ -12,6 +12,8 @@ def main():
     l = Local(path, remote, remote_path, flags)
     r = Remote(path, remote, remote_path)
 
+    r.sync()
+
     thread1 = threading.Thread(target=l.run)
     thread1.start()
     thread2 = threading.Thread(target=r.run)

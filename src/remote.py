@@ -11,10 +11,10 @@ class Remote:
 
     def sync(this):
         print("rclone sync {}:{} {}".format(this._remote, this._remote_path, this._path))
-        #os.system("rclone sync {}:{} {}".format(this._remote, this._remote_path, this._path))
+        os.system("rclone sync {}:{} {}".format(this._remote, this._remote_path, this._path))
 
     def run(this):
-        schedule.every(0.1).minutes.do(this.sync)
+        schedule.every(5).minutes.do(this.sync)
 
         while True:
             schedule.run_pending()

@@ -29,7 +29,7 @@ class Path:
 
         sp = re.split(":", args[len(args)-1])
         this._remote = sp[0]
-        this._remote_path = "/" + os.path.basename(this._path) if sp[1] == "" else sp[1]
+        this._remote_path = "/" + os.path.basename(this._path) if len(sp) == 1 or sp[1] == "" else sp[1]
 
         if (len(args) > 2):
             for i in (0, len(args)-3):

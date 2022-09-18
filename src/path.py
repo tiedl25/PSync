@@ -1,54 +1,68 @@
 import re
 import os
 import numpy as np
+import argparse
 
 class Path:
-    _path = ""
-    _remote = ""
-    _remote_path = ""
-    _remote_type = ""
-    _flags = {"resync" : False, "help" : False, "h" : False, "init" : False, "backsync" : False}
+    '''
+    Arguments:
+        local_path
+        remote_path
+        remote_type
+        flags
+    '''
+    def __init__(self):
+        self.check_params()
+        self.check_remote()
 
-    def __init__(this, args):
-        this._check_path(args)
-        this._norm_arguments(args)
-        this._check_remote()
-    
-    def _check_path(this, args):
-        re_arg = "(--[a-z]*[\s])" # e.g. --resync
-        re_path = "(/[a-zA-Z0-9_\s]+)" # e.g. /home/user/Documents
-        re_rem = "[a-zA-Z0-9]+:?" # e.g. GoogleDrive:
+    def check_params(self):
+        '''
+        Check if console arguments are provided. The arguments are handled by the ArgumentParser class.
+        Parameters:
+        Returns:
 
-        if re.fullmatch("{}*{}+[\s]{}(:{{1}}{})?".format(re_arg, re_path, re_rem, re_path), " ".join(args)) == None:
-            print("Format of request isn't correct")
-            print("Type psync -h or psync --help for examples")
+        '''
+        parser = argparse.ArgumentParser()
+        parser.add_argument(dest='local_path', type=str, help='')
+        parser.add_argument(dest='remote_path', type=str, help='')
+        parser.add_argument('-r', '--resync', dest='resync', action='store_true', help='')
+        parser.add_argument('-i', '--init', dest='init', action='store_true', help='')
+        parser.add_argument('-b', '--backsync', dest='backsync', action='store_true', help='')
+
+        args = parser.parse_args()
+
+        self.local_path = args.local_path
+        self.remote_path = args.remote_path
+        self.flags = {'resync' : args.resync, 'init' : args.init, 'backsync' : args.backsync}
+
+    def dir_path(path):
+        if os.path.isdir(path):
+            return path
+        else:
+            raise argparse.ArgumentTypeError(f"readable_dir:{path} is not a valid path")
+
+    def rem_path(path):
+        pass
+
+    def check_remote(self):
+        re_path = "(/[a-zA-Z0-9_\s]+){1}" # e.g. /home/user/Documents
+        re_rem = "([a-zA-Z0-9]+:)" # e.g. GoogleDrive:
+
+        if re.fullmatch('{}{}'.format(re_rem, re_path), self.remote_path) == None:
+            print('Not valid')
             os._exit(0)
 
-    def _norm_arguments(this, args):
-        this._path = args[len(args)-2]
+        remote = self.remote_path.split(':')[0]
 
-        sp = re.split(":", args[len(args)-1])
-        this._remote = sp[0]
-        this._remote_path = "/" + os.path.basename(this._path) if len(sp) == 1 or sp[1] == "" else sp[1]
-
-        if (len(args) > 2):
-            for i in (0, len(args)-3):
-                key = re.sub("--", "", args[i])
-                if key in this._flags:
-                    this._flags[key] = True
-                else:
-                    print("The argument is not valid. Type psync -h or psync --help for further information")
-                    os._exit(0)
-
-    def _check_remote(this):
         output = os.popen("rclone listremotes --long")
         remote_list = output.read().split()
-        if this._remote + ":" in remote_list[::2]:
-            pos = remote_list.index(this._remote + ":")
-            if remote_list[pos+1] != "drive":
+        if remote + ":" in remote_list[::2]:
+            pos = remote_list.index(remote + ":")
+            self.remote_type = remote_list[pos+1]
+            if self.remote_type != "drive":
                 print("The type of the given remote is not 'drive', and therefore currently not supported")
         else: print("The given remote is misspelled")
 
 
-    def get_arguments(this):
-        return this._path, this._remote, this._remote_path, this._flags
+    def get_arguments(self):
+        return self.local_path, self.remote_path, self.remote_type, self.flags

@@ -4,13 +4,13 @@ import time
 import subprocess
 
 class Remote:
-    def __init__(self, path, remote_path):
+    def __init__(self, path, remote_path, every_minutes=5):
         self.local_path = path
         self.remote_path = remote_path
+        self.every_minutes = every_minutes
 
     def sync(self, q):
-        print("rclone sync {} {}".format(self.remote_path, self.local_path))
-        lol = "rclone sync -v {} {}".format(self.remote_path, self.local_path)
+        print("rclone sync -v {} {}".format(self.remote_path, self.local_path))
         output = subprocess.getoutput(f'rclone sync -v {self.remote_path} {self.local_path}')
         li = []
         for line in output.split('\n'):
@@ -21,7 +21,7 @@ class Remote:
                     q.put(t)
 
     def run(self, q):
-        schedule.every().minute.do(lambda: self.sync(q))
+        schedule.every(self.every_minutes).minutes.do(lambda: self.sync(q))
 
         while True:
             schedule.run_pending()

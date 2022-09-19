@@ -25,15 +25,17 @@ class Path:
         parser = argparse.ArgumentParser()
         parser.add_argument(dest='local_path', type=str, help='')
         parser.add_argument(dest='remote_path', type=str, help='')
-        parser.add_argument('-r', '--resync', dest='resync', action='store_true', help='')
-        parser.add_argument('-i', '--init', dest='init', action='store_true', help='')
-        parser.add_argument('-b', '--backsync', dest='backsync', action='store_true', help='')
+        parser.add_argument('-r', '--resync', dest='resync', action='store_true', help='Resync both local and remote with the rclone bisync --resync command')
+        parser.add_argument('-i', '--init', dest='init', action='store_true', help='Perform initial sync by creating specified directories and run rclone sync')
+        parser.add_argument('-b', '--backsync', dest='backsync', action='store_true', help='Run rclone sync but with remote to local order')
+        parser.add_argument('-e', '--every_minutes', dest='every_minutes', type=float, help='Schedule remote-local sync every x minutes', nargs=1)
 
         args = parser.parse_args()
 
         self.local_path = args.local_path
         self.remote_path = args.remote_path
         self.flags = {'resync' : args.resync, 'init' : args.init, 'backsync' : args.backsync}
+        self.every_minutes = args.every_minutes[0] if args.every_minutes else 5
 
     def dir_path(path):
         if os.path.isdir(path):
@@ -65,4 +67,4 @@ class Path:
 
 
     def get_arguments(self):
-        return self.local_path, self.remote_path, self.remote_type, self.flags
+        return self.local_path, self.remote_path, self.remote_type, self.flags, self.every_minutes

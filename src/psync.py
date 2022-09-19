@@ -8,9 +8,9 @@ import queue
 
 def main():
     p = Path()
-    local_path, remote_path, remote_type, flags = p.get_arguments()
+    local_path, remote_path, remote_type, flags, every_minutes = p.get_arguments()
     l = Local(local_path, remote_path, flags)
-    r = Remote(local_path, remote_path)
+    r = Remote(local_path, remote_path, every_minutes)
 
     q = queue.Queue()
 

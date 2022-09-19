@@ -1,3 +1,4 @@
+from importlib.resources import path
 import os
 from os.path import basename
 import inotify.adapters
@@ -16,6 +17,11 @@ class Local:
                                                                     inotify.constants.IN_ATTRIB))
 
     def options(self, type_names, filename, dir_path):
+    
+        rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
+        rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
+        if rel_path == self.local_path: return ''
+
         # defines remote path in rclone
         dest = self.remote_path + dir_path.split(self.local_path)[1]
 
@@ -40,8 +46,8 @@ class Local:
             print("rclone sync {} {}".format(self.remote_path, self.local_path))
             os.system("rclone sync {} {}".format(self.remote_path, self.local_path))
         if self.flags["resync"]:
-            print("rclone bisync {} {}".format(self.local_path, self.remote_path))
-            os.system("rclone bisync {} {}".format(self.local_path, self.remote_path))            
+            print("rclone bisync --resync {} {}".format(self.local_path, self.remote_path))
+            os.system("rclone bisync --resync {} {}".format(self.local_path, self.remote_path))            
         if self.flags["init"]:
             print("rclone sync {} {}".format(self.local_path, self.remote_path))
             os.system("rclone sync {} {}".format(self.local_path, self.remote_path))
@@ -51,11 +57,8 @@ class Local:
         for event in self.intfy.event_gen(yield_nones=False):
             (_, type_names, dirpath, filename) = event
 
-            rel_dirpath = (dirpath.split(self.local_path)[1])[1:]
-            rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
-
-            str = self.options(type_names, filename, dirpath) if rel_path != q.get() else ''
+            com = self.options(type_names, filename, dirpath)
             
-            if str!="": 
-                print(str)
-                os.system(str) 
+            if com!="": 
+                print(com)
+                os.system(com) 

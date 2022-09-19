@@ -44,7 +44,7 @@ class Path:
             raise argparse.ArgumentTypeError(f"readable_dir:{s} is not a valid path")
 
     def remote_path_exists(self, s):
-        re_path = "(/[a-zA-Z0-9_\s]+){1}" # e.g. /home/user/Documents
+        re_path = "(/[a-zA-Z0-9_\s]+)*" # e.g. /home/user/Documents
         re_rem = "([a-zA-Z0-9]+:)" # e.g. GoogleDrive:
 
         if re.fullmatch('{}{}'.format(re_rem, re_path), s) == None:

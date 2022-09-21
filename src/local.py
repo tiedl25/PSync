@@ -16,11 +16,11 @@ class Local:
                                                                     inotify.constants.IN_MODIFY | 
                                                                     inotify.constants.IN_ATTRIB))
 
-    def options(self, type_names, filename, dir_path):
+    def options(self, type_names, filename, dir_path, q):
     
         rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
         rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
-        if rel_path == self.local_path: return ''
+        if rel_path == q.get(): return ''
 
         # defines remote path in rclone
         dest = self.remote_path + dir_path.split(self.local_path)[1]
@@ -57,7 +57,7 @@ class Local:
         for event in self.intfy.event_gen(yield_nones=False):
             (_, type_names, dirpath, filename) = event
 
-            com = self.options(type_names, filename, dirpath)
+            com = self.options(type_names, filename, dirpath, q)
             
             if com!="": 
                 print(com)

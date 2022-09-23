@@ -2,8 +2,7 @@ from importlib.resources import path
 import os
 from os.path import basename
 import inotify.adapters
-import sys
-import re
+import pathlib
 
 class Local:
     def __init__(self, local_path, remote_path, flags):
@@ -15,12 +14,22 @@ class Local:
                                                                     inotify.constants.IN_CREATE | 
                                                                     inotify.constants.IN_MODIFY | 
                                                                     inotify.constants.IN_ATTRIB))
+        self.extensions = ['.part']
 
     def options(self, type_names, filename, dir_path, q):
     
         rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
         rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
-        if rel_path == q.get(): return ''
+        try:
+            lol = q.get(timeout=2)
+        except:
+            lol = ''
+        if rel_path == lol: return ''
+
+        extension = pathlib.Path(filename).suffix
+        if extension in self.extensions: 
+            print(f'Skipping {filename} because of extension')
+            return ''
 
         # defines remote path in rclone
         dest = self.remote_path + dir_path.split(self.local_path)[1]
@@ -56,7 +65,6 @@ class Local:
         self.check_flags()
         for event in self.intfy.event_gen(yield_nones=False):
             (_, type_names, dirpath, filename) = event
-
             com = self.options(type_names, filename, dirpath, q)
             
             if com!="": 

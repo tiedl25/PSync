@@ -1,4 +1,3 @@
-import os
 import schedule
 import time
 import subprocess
@@ -10,7 +9,7 @@ class Remote:
         self.every_minutes = every_minutes
 
     def sync(self, q):
-        print("rclone sync -v {} {}".format(self.remote_path, self.local_path))
+        print("rclone sync {} {}".format(self.remote_path, self.local_path))
         output = subprocess.getoutput(f'rclone sync -v {self.remote_path} {self.local_path}')
         li = []
         for line in output.split('\n'):
@@ -21,6 +20,7 @@ class Remote:
                     q.put(t)
 
     def run(self, q):
+        self.sync(q)
         schedule.every(self.every_minutes).minutes.do(lambda: self.sync(q))
 
         while True:

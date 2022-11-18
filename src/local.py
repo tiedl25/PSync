@@ -17,6 +17,14 @@ class Local:
         self.extensions = ['.part']
 
     def options(self, type_names, filename, dir_path, q):
+        extension = pathlib.Path(filename).suffix
+        if extension in self.extensions: 
+            print(f'Skipping {filename} because of extension')
+            return ''
+
+        if filename[0] == '.':
+            print(f'Skipping {filename} because it is a hidden file')
+            return ''
     
         rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
         rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
@@ -25,11 +33,6 @@ class Local:
         except:
             lol = ''
         if rel_path == lol: return ''
-
-        extension = pathlib.Path(filename).suffix
-        if extension in self.extensions: 
-            print(f'Skipping {filename} because of extension')
-            return ''
 
         # defines remote path in rclone
         dest = self.remote_path + dir_path.split(self.local_path)[1]

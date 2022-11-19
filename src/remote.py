@@ -20,9 +20,8 @@ class Remote:
                     q.put(t)
 
     def run(self, q):
-        self.sync(q)
         schedule.every(self.every_minutes).minutes.do(lambda: self.sync(q))
 
         while True:
-            schedule.run_pending()
+            if q.empty(): schedule.run_pending()
             time.sleep(1)

@@ -13,7 +13,7 @@ class Local:
                                                                     inotify.constants.IN_DELETE | 
                                                                     inotify.constants.IN_CREATE | 
                                                                     inotify.constants.IN_MODIFY | 
-                                                                    inotify.constants.IN_ATTRIB))
+                                                                    inotify.constants.IN_ATTRIB))                                              
         self.extensions = ['.part']
 
     def options(self, type_names, filename, dir_path, q):
@@ -22,14 +22,14 @@ class Local:
             print(f'Skipping {filename} because of extension')
             return ''
 
-        if filename[0] == '.':
+        if filename[0] in ['.', '#']:
             print(f'Skipping {filename} because it is a hidden file')
             return ''
-    
+
         rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
         rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
         try:
-            lol = q.get(timeout=2)
+            lol = q.get(timeout=1)
         except:
             lol = ''
         if rel_path == lol: return ''
@@ -61,11 +61,13 @@ class Local:
             print("rclone bisync --resync {} {}".format(self.local_path, self.remote_path))
             os.system("rclone bisync --resync {} {}".format(self.local_path, self.remote_path))            
         if self.flags["init"]:
-            print("rclone sync {} {}".format(self.local_path, self.remote_path))
-            os.system("rclone sync {} {}".format(self.local_path, self.remote_path))
+            print("rclone sync  --delete-before --exclude '.*' --delete-excluded {} {}".format(self.local_path, self.remote_path))
+            os.system("rclone sync  --delete-before --exclude '.*' --delete-excluded {} {}".format(self.local_path, self.remote_path))
 
     def run(self, q):
         self.check_flags()
+        q.get()
+
         for event in self.intfy.event_gen(yield_nones=False):
             (_, type_names, dirpath, filename) = event
             com = self.options(type_names, filename, dirpath, q)

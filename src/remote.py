@@ -9,8 +9,8 @@ class Remote:
         self.every_minutes = every_minutes
 
     def sync(self, q):
-        print("rclone sync {} {}".format(self.remote_path, self.local_path))
-        output = subprocess.getoutput(f'rclone sync -v {self.remote_path} {self.local_path}')
+        print("rclone sync --delete-before {} {}".format(self.remote_path, self.local_path))
+        output = subprocess.getoutput(f'rclone sync --delete-before -v {self.remote_path} {self.local_path}')
         li = []
         for line in output.split('\n'):
             s = line.split('INFO  : ')

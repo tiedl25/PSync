@@ -1,12 +1,14 @@
 import schedule
 import time
 import subprocess
+from local import Local
 
 class Remote:
-    def __init__(self, path, remote_path, every_minutes=5):
+    def __init__(self, path, remote_path, logger, every_minutes=5):
         self.local_path = path
         self.remote_path = remote_path
         self.every_minutes = every_minutes
+        self.logger = logger
 
     def sync(self, q):
         print("rclone sync --delete-before {} {}".format(self.remote_path, self.local_path))
@@ -23,5 +25,5 @@ class Remote:
         schedule.every(self.every_minutes).minutes.do(lambda: self.sync(q))
 
         while True:
-            if q.empty(): schedule.run_pending()
+            if not Local.lock: schedule.run_pending()
             time.sleep(1)

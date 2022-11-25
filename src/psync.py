@@ -13,11 +13,11 @@ class Psync:
         
         '''
         if self.flags["backsync"]:
-            self.logger.log("rclone sync {} {}".format(self.remote_path, self.local_path))
+            self.logger.run("rclone sync -v {} {}".format(self.remote_path, self.local_path))
         if self.flags["resync"]:
-            self.logger.log("rclone bisync --resync {} {}".format(self.local_path, self.remote_path))           
+            self.logger.run("rclone bisync -v --resync {} {}".format(self.local_path, self.remote_path))           
         if self.flags["init"]:
-            self.logger.log("rclone sync  --delete-before --exclude '.*' --delete-excluded {} {}".format(self.local_path, self.remote_path))
+            self.logger.run("rclone sync -v --delete-before --exclude '.*' --delete-excluded {} {}".format(self.local_path, self.remote_path))
 
     def __init__(self):
         p = Path()

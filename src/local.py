@@ -11,7 +11,7 @@ import time
 class Local:
     lock = False
 
-    def __init__(self, local_path, remote_path, logger):
+    def __init__(self, local_path, remote_path, logger, rclone):
         self.local_path = local_path
         self.remote_path = remote_path
         self.intfy = inotify.adapters.InotifyTree(self.local_path, mask=(inotify.constants.IN_MOVE | 
@@ -21,6 +21,7 @@ class Local:
                                                                     inotify.constants.IN_ATTRIB))                                              
         self.extensions = ['.part']
         self.logger = logger
+        self.rclone = rclone
 
     def check_if_child(self, child, parent):
         return child.startswith(parent)
@@ -70,41 +71,49 @@ class Local:
 
         if extension in self.extensions: 
             self.logger.log(f'Skipping {filename} because of extension')
-            return '', False
+            return False
 
         if filename == '':
             self.logger.log(f'Skipping {dir_path} with {type_names} because there is no filename')
-            return '', False
+            return False
 
         if filename[0] in ['.', '#']:
             self.logger.log(f'Skipping {filename} because it is a hidden file')
-            return '', False
+            return False
 
         if not self.check_if_trueChange(dir_path, filename, remote_changes, remote_changes_tmp):
             self.logger.log(f'Skipping {filename} because the change is caused by backsync')
-            return '', False    
+            return False    
 
         if not self.check_if_necessary(dir_path, filename, local_changes):
             self.logger.log(f"Skipping {filename} because it isn't necessary")
-            return '', False
+            return False
 
         # defines remote path in rclone
-        dest = self.remote_path + dir_path.split(self.local_path)[1]
+        #dest = self.remote_path + dir_path.split(self.local_path)[1]
 
         # boolean value -> determines if file/folder has to be copied
         copy = type_names[0] == 'IN_MOVED_TO' or type_names[0] ==  'IN_CREATE' or type_names[0] ==  'IN_MODIFY' or type_names[0] ==  'IN_ATTRIB'
 
         if (type_names[0] == 'IN_MOVED_FROM' and len(type_names) == 1) or (type_names[0] == 'IN_DELETE' and len(type_names) == 1):
-            return """rclone delete \"{}/{}\"""".format(dest, filename), False
+            #return """rclone delete \"{}/{}\"""".format(dest, filename), False
+            self.rclone.delete(filename)
+            return False
 
         elif copy and len(type_names) == 1:
-            return """rclone copy \"{}/{}\" \"{}\"""".format(dir_path, filename, dest), False
+            #return """rclone copy \"{}/{}\" \"{}\"""".format(dir_path, filename, dest), False
+            self.rclone.copy(dir_path, filename)
+            return False
 
         elif (type_names[0] == 'IN_MOVED_FROM' and type_names[1] == 'IN_ISDIR') or (type_names[0] == 'IN_DELETE' and type_names[1] == 'IN_ISDIR'):
-            return """rclone purge \"{}/{}\"""".format(dest, filename), False
+            #return """rclone purge \"{}/{}\"""".format(dest, filename), False
+            self.rclone.purge(filename)
+            return False
 
         elif copy and type_names[1] == 'IN_ISDIR':
-            return """rclone sync -v \"{}/{}\" \"{}/{}\"""".format(dir_path, filename, dest, filename), True
+            #return """rclone sync -v \"{}/{}\" \"{}/{}\"""".format(dir_path, filename, dest, filename), True
+            self.rclone.sync(dir_path, filename)
+            return True
 
     def change_listener(self, remote_changes, local_changes):
         for event in self.intfy.event_gen(yield_nones=False):
@@ -139,19 +148,16 @@ class Local:
             except: event = []
 
             if event != []:
-                com, is_child = self.options(event[0], event[1], event[2], remote_changes, remote_changes_tmp, local_changes)
+                is_child = self.options(event[0], event[1], event[2], remote_changes, remote_changes_tmp, local_changes)
 
-            if com!='': 
-                self.logger.run(com)
-                com = ''
-                if is_child:
-                    local_changes_tmp = list(local_changes.queue)
-                    for tmp in local_changes_tmp:
-                        if self.check_if_child(f'{tmp[1]}/{tmp[2]}', f'{event[1]}/{event[2]}'):
-                            local_changes.get()
-                            self.logger.debug(local_changes.qsize())
+            if is_child:
+                local_changes_tmp = list(local_changes.queue)
+                for tmp in local_changes_tmp:
+                    if self.check_if_child(f'{tmp[1]}/{tmp[2]}', f'{event[1]}/{event[2]}'):
+                        local_changes.get()
+                        self.logger.debug(local_changes.qsize())
 
-                    is_child = False
+                is_child = False
             Local.lock = True if local_changes.qsize() > 0 else False
 
     def run(self, remote_changes):

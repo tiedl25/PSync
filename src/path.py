@@ -29,14 +29,13 @@ class Path:
         parser.add_argument('-i', '--init', dest='init', action='store_true', help='Perform initial sync by creating specified directories and run rclone sync')
         parser.add_argument('-b', '--backsync', dest='backsync', action='store_true', help='Run rclone sync but with remote to local order')
         parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='Show output')
-        parser.add_argument('-l', '--log', dest='log', action='store_true', help='Save output to log file')
         parser.add_argument('-e', '--every_minutes', dest='every_minutes', type=float, help='Schedule remote-local sync every x minutes', nargs=1)
 
         args = parser.parse_args()
 
         self.local_path = args.local_path
         self.remote_path = args.remote_path
-        self.flags = {'resync' : args.resync, 'init' : args.init, 'backsync' : args.backsync, 'verbose' : args.verbose, 'log' : args.log}
+        self.flags = {'resync' : args.resync, 'init' : args.init, 'backsync' : args.backsync, 'verbose' : args.verbose}
         self.every_minutes = args.every_minutes[0] if args.every_minutes else 5
 
     def path_exists(self, s):

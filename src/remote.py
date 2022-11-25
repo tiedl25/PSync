@@ -1,22 +1,20 @@
 import schedule
 import time
-import subprocess
 import local
 
 class Remote:
     lock = False
 
-    def __init__(self, path, remote_path, logger, every_minutes=5):
+    def __init__(self, path, remote_path, logger, rclone, every_minutes=5):
         self.local_path = path
         self.remote_path = remote_path
         self.every_minutes = every_minutes
         self.logger = logger
+        self.rclone = rclone
 
     def sync(self, q):
         Remote.lock = True
-        print(f'rclone sync -v --delete-before {self.remote_path} {self.local_path}')
-        output = subprocess.getoutput(f'rclone sync -v --delete-before {self.remote_path} {self.local_path}')
-        print(output)
+        output = self.rclone.backsync()
         li = []
         for line in output.split('\n'):
             s = line.split('INFO  : ')

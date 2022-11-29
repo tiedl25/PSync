@@ -35,7 +35,6 @@ class Local:
 
         for i in tmp:
             if rel_path == i: 
-                self.logger.debug(f'{rel_path} == {i}')
                 q.get(timeout=2)
                 return False
 
@@ -54,7 +53,6 @@ class Local:
 
         for i in tmp:
             lol2 = f'{i[1]}/{i[2]}'
-            self.logger.debug(f'{lol} == {lol2}')
             if lol == lol2: 
                 
                 q.get(timeout=2)
@@ -114,7 +112,6 @@ class Local:
 
             local_changes.put([type_names, dirpath, filename])
             Local.lock = True
-            self.logger.debug(local_changes.qsize())
 
     def sync_service(self, remote_changes, local_changes):
         com = ''
@@ -148,7 +145,6 @@ class Local:
                 for tmp in local_changes_tmp:
                     if self.check_if_child(f'{tmp[1]}/{tmp[2]}', f'{event[1]}/{event[2]}'):
                         local_changes.get()
-                        self.logger.debug(local_changes.qsize())
 
                 is_child = False
             Local.lock = True if local_changes.qsize() > 0 else False

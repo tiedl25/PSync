@@ -89,29 +89,22 @@ class Local:
             self.logger.log(f"Skipping {filename} because it isn't necessary")
             return False
 
-        # defines remote path in rclone
-        #dest = self.remote_path + dir_path.split(self.local_path)[1]
-
         # boolean value -> determines if file/folder has to be copied
         copy = type_names[0] == 'IN_MOVED_TO' or type_names[0] ==  'IN_CREATE' or type_names[0] ==  'IN_MODIFY' or type_names[0] ==  'IN_ATTRIB'
 
         if (type_names[0] == 'IN_MOVED_FROM' and len(type_names) == 1) or (type_names[0] == 'IN_DELETE' and len(type_names) == 1):
-            #return """rclone delete \"{}/{}\"""".format(dest, filename), False
             self.rclone.delete(filename)
             return False
 
         elif copy and len(type_names) == 1:
-            #return """rclone copy \"{}/{}\" \"{}\"""".format(dir_path, filename, dest), False
             self.rclone.copy(dir_path, filename)
             return False
 
         elif (type_names[0] == 'IN_MOVED_FROM' and type_names[1] == 'IN_ISDIR') or (type_names[0] == 'IN_DELETE' and type_names[1] == 'IN_ISDIR'):
-            #return """rclone purge \"{}/{}\"""".format(dest, filename), False
             self.rclone.purge(filename)
             return False
 
         elif copy and type_names[1] == 'IN_ISDIR':
-            #return """rclone sync -v \"{}/{}\" \"{}/{}\"""".format(dir_path, filename, dest, filename), True
             self.rclone.sync(dir_path, filename)
             return True
 

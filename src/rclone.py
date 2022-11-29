@@ -32,8 +32,8 @@ class Rclone:
 
     def backsync(self):
         command = f'rclone sync {self.verbose}--delete-before {self.remote_path} {self.local_path}'
-        output = subprocess.getoutput(f'rclone sync -v --delete-before {self.remote_path} {self.local_path}')
         self.logger.log(command)
+        output = subprocess.getoutput(f'rclone sync -v --delete-before {self.remote_path} {self.local_path}')
         self.logger.log(output)
         return output  
 

@@ -40,8 +40,9 @@ class Psync:
         thread1.start()
         thread2.start()   
 
-
-
-if __name__ == '__main__':
+def main():
     psync = Psync()
     psync.run()
+
+if __name__ == '__main__':
+    main()

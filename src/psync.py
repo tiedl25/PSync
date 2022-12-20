@@ -5,6 +5,7 @@ from path import Path
 from remote import Remote
 from logger import Logger
 from rclone import Rclone
+from gdrive import GoogleDrive
 import threading
 
 class Psync:
@@ -29,7 +30,10 @@ class Psync:
         self.check_flags()
 
         self.local = Local(self.local_path, self.remote_path, self.logger, self.rclone)
-        self.remote = Remote(self.local_path, self.remote_path, self.logger, self.rclone, self.every_minutes)
+        if self.remote_type == 'drive':
+            self.remote = GoogleDrive(self.local_path, self.remote_path, self.logger, self.rclone)
+        else:
+            self.remote = Remote(self.local_path, self.remote_path, self.logger, self.rclone, self.every_minutes)
 
         self.remote_changes = queue.Queue()        
 

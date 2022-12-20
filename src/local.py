@@ -83,9 +83,9 @@ class Local:
             self.logger.log(f'Skipping {filename} because the change is caused by backsync')
             return False    
 
-        if not self.check_if_necessary(dir_path, filename, local_changes):
-            self.logger.log(f"Skipping {filename} because it isn't necessary")
-            return False
+        #if not self.check_if_necessary(dir_path, filename, local_changes):
+        #    self.logger.log(f"Skipping {filename} because it isn't necessary")
+        #    return False
 
         # boolean value -> determines if file/folder has to be copied
         copy = type_names[0] == 'IN_MOVED_TO' or type_names[0] ==  'IN_CREATE' or type_names[0] ==  'IN_MODIFY' or type_names[0] ==  'IN_ATTRIB'

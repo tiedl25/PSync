@@ -36,6 +36,7 @@ class Local:
         for i in tmp:
             if rel_path == i: 
                 q.get(timeout=2)
+                tmp.remove(i)
                 return False
 
         return True

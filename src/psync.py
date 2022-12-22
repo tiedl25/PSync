@@ -5,7 +5,7 @@ from path import Path
 from remote import Remote
 from logger import Logger
 from rclone import Rclone
-from gdrive import GoogleDrive
+from drive import GoogleDrive
 import threading
 
 class Psync:

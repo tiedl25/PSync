@@ -8,6 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 import queue
 import threading
+from datetime import datetime, timedelta
 
 class GoogleDrive:
     CLIENT_SECRET_FILE = 'client_secret_PSync.json'
@@ -49,6 +50,56 @@ class GoogleDrive:
             print('Unable to connect.')
             print(e)
 
+    def separate(self, e, tabs=0):
+        t = ''
+        for n in range(0, tabs):
+            t = t + '\t'
+
+        for i in zip(e.keys(), e.values()):
+            if type(i[1]) in [str, int, bool, float]: 
+                print(f'{t}{i[0]} : {i[1]}')
+            elif type(i[1]) == dict: 
+                print(f'{t}{i[0]} : ')
+                self.separate(i[1], tabs=tabs+1)
+            else:
+                print(f'{t}{i[0]} : ')
+                self.separate2(i[1], tabs=tabs+1)
+    
+    def separate2(self, e, tabs=0):
+        t = ''
+        for n in range(0, tabs):
+            t = t + '\t'
+
+        for i in e:
+            if type(i) in [str, int, bool, float]: 
+                print(f'{t}{i}')
+            elif type(i) == dict:
+                self.separate(i, tabs=tabs+1)
+            else:
+                self.separate2(i, tabs=tabs+1)
+
+    def str_to_date(self, s):
+        date = s.replace('T', '', 1).replace('Z', '', 1)
+        format = ("%Y-%m-%d%H:%M:%S.%f")
+        return datetime.strptime(date, format)    
+
+    def check_if_change(self, change_element):
+        '''
+            With the change information of the google drive api one can not tell if a file/folder was only viewed or if there appeared a real change. 
+            To obtain this information we can have a look at the different time stamps the api provides. The timestamps however are not modified when 
+            a file is trashed, untrashed or moved. It is only modified when the file/folder, when it is viewed or, when the file is renamed. so to obtain
+            if there was a real change we first check if the modify timestamp is more recent than the view timestamp. If so we can be sure, that the change
+            is caused by a rename or creation. If not the we also need to check if change is caused by a file view. For that we check if the file view
+            happened within a period to seconds before the file change until the file change was recorded, so we can be sure about it. If it is outside 
+            this range it will be also treated as a real change and if not than nothing happens.
+        '''
+        # check if the last change was a view on the file or a real change such as a rename
+        if change_element['file_view'] > change_element['file_modify']:
+            # check if the change is caused by the file view or another operation such as a file move
+            if change_element['file_view'] > change_element['change_time'] - timedelta(0,2): 
+                return False
+        return True
+
     def retrieve_changes(self, change_queue, start_change_id=None):
         result = []
         response = self.service.changes().getStartPageToken().execute()
@@ -68,14 +119,23 @@ class GoogleDrive:
             changes = changes['changes']
 
             if changes != []:
+                
+                
                 for change in changes:
+                    #self.separate(change)
                     change_element = {'removed': change['file']['trashed'], 
                         'name': change['file']['name'], 
                         'id': change['fileId'], 
                         'parent' : change['file']['parents'][0], 
-                        'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False}
-                    self.get_path(change_element)
-                    change_queue.put(change_element)
+                        'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
+                        'change_time' : self.str_to_date(change['time']),
+                        'file_create' : self.str_to_date(change['file']['createdTime']),
+                        'file_modify' : self.str_to_date(change['file']['modifiedTime']),
+                        'file_view' : self.str_to_date(change['file']['viewedByMeTime'])}
+
+                    if self.check_if_change(change_element):
+                        self.get_path(change_element)
+                        change_queue.put(change_element)
 
             page_token = next_page_token
 
@@ -114,9 +174,6 @@ class GoogleDrive:
                 print('Copy folder')
             elif change['removed'] == False and change['folder'] == False:
                 print('Copy file')
-
-    def check_if_trueChange(self):
-        pass
 
     def run(self, remote_changes):
         change_queue = queue.Queue()

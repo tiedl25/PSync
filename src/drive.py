@@ -93,18 +93,44 @@ class GoogleDrive:
             happened within a period to seconds before the file change until the file change was recorded, so we can be sure about it. If it is outside 
             this range it will be also treated as a real change and if not than nothing happens.
         '''
+        if change_element['file_view'] == change_element['file_create']:
+            return True
+
         # check if the last change was a view on the file or a real change such as a rename
         if change_element['file_view'] > change_element['file_modify']:
             # check if the change is caused by the file view or another operation such as a file move
-            if change_element['file_view'] > change_element['change_time'] - timedelta(0,2): 
+            if change_element['file_view'] > (change_element['change_time'] - timedelta(0,2)): 
                 return False
+
         return True
 
-    def retrieve_changes(self, change_queue, start_change_id=None):
+    def check_if_trueChange(self, change_element, local_history):
+        ''' 
+        Check if the path also exists in the local changes, and if so delete it.
+        '''
+        path = change_element['path'].removeprefix(self.remote_path)
+        path = self.local_path + path
+
+        for i in list(local_history.queue):
+            loc_path = i[1] + '/' + i[2]
+            if path == loc_path: 
+                local_history.get(timeout=2)
+                return False
+
+        return True
+
+    def check_if_lastChange(self, change_element, last_change_element):
+        if change_element['fileId'] != last_change_element['fileId']: return False
+
+        if change_element['']
+
+    def retrieve_changes(self, changes, remote_history, local_history, start_change_id=None):
         result = []
         response = self.service.changes().getStartPageToken().execute()
         page_token = response["startPageToken"]
         next_page_token = page_token
+
+        last_change_element = ''
 
         while True:
             param = {}
@@ -115,14 +141,15 @@ class GoogleDrive:
                 
             param['fields'] = '*'
 
-            changes = self.service.changes().list(**param).execute()
-            changes = changes['changes']
+            drive_changes = self.service.changes().list(**param).execute()
+            drive_changes = drive_changes['changes']
 
-            if changes != []:
-                
-                
-                for change in changes:
-                    #self.separate(change)
+            if drive_changes != []:
+                for change in drive_changes:
+                    self.separate(change)
+                    try: v = self.str_to_date(change['file']['viewedByMeTime']) 
+                    except: v = self.str_to_date(change['file']['createdTime'])
+
                     change_element = {'removed': change['file']['trashed'], 
                         'name': change['file']['name'], 
                         'id': change['fileId'], 
@@ -131,11 +158,18 @@ class GoogleDrive:
                         'change_time' : self.str_to_date(change['time']),
                         'file_create' : self.str_to_date(change['file']['createdTime']),
                         'file_modify' : self.str_to_date(change['file']['modifiedTime']),
-                        'file_view' : self.str_to_date(change['file']['viewedByMeTime'])}
+                        'file_view' : v}
 
-                    if self.check_if_change(change_element):
-                        self.get_path(change_element)
-                        change_queue.put(change_element)
+                    if self.check_if_lastChange(change_element, last_change_element):
+                        if self.check_if_change(change_element):
+                            self.get_path(change_element)
+                            if self.check_if_trueChange(change_element, local_history):   
+                                # to check if the change comes from the right folder
+                                if change_element['path'].startswith(self.remote_path):
+                                    changes.put(change_element)
+                                    remote_history.put(change_element)
+
+                    last_change_element = change
 
             page_token = next_page_token
 
@@ -162,9 +196,9 @@ class GoogleDrive:
         path = self.remote_path.split(':')[0] + ':' + path
         change_element['path'] = path
 
-    def sync_changes(self, change_queue):
+    def sync_changes(self, changes):
         while(True):
-            change = change_queue.get()
+            change = changes.get()
 
             if change['removed'] == True and change['folder'] == True:
                 print('Remove folder')
@@ -175,12 +209,12 @@ class GoogleDrive:
             elif change['removed'] == False and change['folder'] == False:
                 print('Copy file')
 
-    def run(self, remote_changes):
-        change_queue = queue.Queue()
+    def run(self, remote_history, local_history):
+        changes = queue.Queue()
 
         self.create_service()
-        rc = threading.Thread(target=self.retrieve_changes, args=(change_queue,))
-        sc = threading.Thread(target=self.sync_changes, args=(change_queue,))
+        rc = threading.Thread(target=self.retrieve_changes, args=(changes, remote_history, local_history))
+        sc = threading.Thread(target=self.sync_changes, args=(changes,))
 
         rc.start()
         sc.start()

@@ -61,7 +61,7 @@ class Local:
 
         return True
 
-    def options(self, type_names, dir_path, filename, remote_changes, remote_changes_tmp, local_changes):
+    def options(self, type_names, dir_path, filename, remote_history, remote_history_tmp, changes, local_history):
         '''
         Determines rclone command from the inotify mask
         '''
@@ -80,7 +80,7 @@ class Local:
             self.logger.log(f'Skipping {filename} because it is a hidden file')
             return False
 
-        if not self.check_if_trueChange(dir_path, filename, remote_changes, remote_changes_tmp):
+        if not self.check_if_trueChange(dir_path, filename, remote_history, remote_history_tmp):
             self.logger.log(f'Skipping {filename} because the change is caused by backsync')
             return False    
 
@@ -88,11 +88,13 @@ class Local:
         #    self.logger.log(f"Skipping {filename} because it isn't necessary")
         #    return False
 
+        local_history.put([type_names, dir_path, filename])
+
         # boolean value -> determines if file/folder has to be copied
         copy = type_names[0] == 'IN_MOVED_TO' or type_names[0] ==  'IN_CREATE' or type_names[0] ==  'IN_MODIFY' or type_names[0] ==  'IN_ATTRIB'
 
         if (type_names[0] == 'IN_MOVED_FROM' and len(type_names) == 1) or (type_names[0] == 'IN_DELETE' and len(type_names) == 1):
-            self.rclone.delete(filename)
+            self.rclone.delete(dir_path, filename)
             return False
 
         elif copy and len(type_names) == 1:
@@ -100,26 +102,26 @@ class Local:
             return False
 
         elif (type_names[0] == 'IN_MOVED_FROM' and type_names[1] == 'IN_ISDIR') or (type_names[0] == 'IN_DELETE' and type_names[1] == 'IN_ISDIR'):
-            self.rclone.purge(filename)
+            self.rclone.purge(dir_path, filename)
             return False
 
         elif copy and type_names[1] == 'IN_ISDIR':
             self.rclone.sync(dir_path, filename)
             return True
 
-    def change_listener(self, remote_changes, local_changes):
+    def change_listener(self, changes):
         for event in self.intfy.event_gen(yield_nones=False):
             (_, type_names, dirpath, filename) = event
 
-            local_changes.put([type_names, dirpath, filename])
+            changes.put([type_names, dirpath, filename])
             Local.lock = True
 
-    def sync_service(self, remote_changes, local_changes):
+    def sync_service(self, changes, remote_history, local_history):
         com = ''
         is_child = False
 
         locked = False
-        remote_changes_tmp = []
+        remote_history_tmp = []
 
         parent = ''
 
@@ -131,30 +133,30 @@ class Local:
 
             # after backsync is finished get remote_changes and store in list for efficient access
             if locked:
-                remote_changes_tmp = list(remote_changes.queue)
+                remote_history_tmp = list(remote_history.queue)
                 locked = False
 
             try: 
-                event = local_changes.get(timeout=1)
+                event = changes.get(timeout=1)
             except: event = []
 
             if event != []:
-                is_child = self.options(event[0], event[1], event[2], remote_changes, remote_changes_tmp, local_changes)
+                is_child = self.options(event[0], event[1], event[2], remote_history, remote_history_tmp, changes, local_history)
 
             if is_child:
-                local_changes_tmp = list(local_changes.queue)
-                for tmp in local_changes_tmp:
+                changes_tmp = list(changes.queue)
+                for tmp in changes_tmp:
                     if self.check_if_child(f'{tmp[1]}/{tmp[2]}', f'{event[1]}/{event[2]}'):
-                        local_changes.get()
+                        changes.get()
 
                 is_child = False
-            Local.lock = True if local_changes.qsize() > 0 else False
+            Local.lock = True if changes.qsize() > 0 else False
 
-    def run(self, remote_changes):
-        local_changes = queue.Queue()
+    def run(self, remote_history, local_history):
+        changes = queue.Queue()
 
-        ch = threading.Thread(target=self.change_listener, args=(remote_changes, local_changes,))
-        ss = threading.Thread(target=self.sync_service, args=(remote_changes, local_changes,))
+        ch = threading.Thread(target=self.change_listener, args=(changes,))
+        ss = threading.Thread(target=self.sync_service, args=(changes, remote_history, local_history,))
 
         ch.start()
         ss.start()

@@ -35,11 +35,12 @@ class Psync:
         else:
             self.remote = Remote(self.local_path, self.remote_path, self.logger, self.rclone, self.every_minutes)
 
-        self.remote_changes = queue.Queue()        
+        self.remote_history = queue.Queue()        
+        self.local_history = queue.Queue()
 
     def run(self):
-        thread1 = threading.Thread(target=self.local.run, args=(self.remote_changes,))
-        thread2 = threading.Thread(target=self.remote.run, args=(self.remote_changes,))
+        thread1 = threading.Thread(target=self.local.run, args=(self.remote_history, self.local_history,))
+        thread2 = threading.Thread(target=self.remote.run, args=(self.remote_history, self.local_history,))
 
         thread1.start()
         thread2.start()   

@@ -8,27 +8,37 @@ class Rclone:
         self.verbose = '-v ' if verbose else ''
         self.logger = logger
 
-    def sync(self, dirpath, filename):
+    def sync(self, dirpath, filename, local=False):
         destpath = self.remote_path + dirpath.split(self.local_path)[1]
         command = f'rclone sync {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
         self.logger.log(command)
         os.system(command)
 
-    def copy(self, dirpath, filename):
+    def copy(self, dirpath, filename, local=False):
         destpath = self.remote_path + dirpath.split(self.local_path)[1]
         command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}"'
         self.logger.log(command)
         os.system(command)
 
-    def purge(self, foldername):
-        command = f'rclone purge {self.verbose}"{self.remote_path}/{foldername}"'
+    def purge(self, dirpath, foldername, local=False):
+        destpath = self.remote_path + dirpath.split(self.local_path)[1]
+
+        if local: command = f'rm -R "{dirpath}/{foldername}"'
+        else: command = f'rclone purge {self.verbose}"{destpath}/{foldername}"'
+        
         self.logger.log(command)
         os.system(command)
 
-    def delete(self, filename):
-        command = f'rclone delete {self.verbose}"{self.remote_path}/{filename}"'
+    def delete(self, dirpath, filename, local=False):
+        destpath = self.remote_path + dirpath.split(self.local_path)[1]
+
+        if local: command = f'rm -R "{dirpath}/{filename}"'
+        else: command = f'rclone delete {self.verbose}"{destpath}/{filename}"'
+
         self.logger.log(command)
         os.system(command)
+
+        
 
     def backsync(self):
         command = f'rclone sync {self.verbose}--delete-before "{self.remote_path}" "{self.local_path}"'

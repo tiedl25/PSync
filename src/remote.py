@@ -24,7 +24,7 @@ class Remote:
                     q.put(t)
         Remote.lock = False
 
-    def run(self, q):
+    def run(self, q, p):
         schedule.every(self.every_minutes).minutes.do(lambda: self.sync(q))
 
         while True:

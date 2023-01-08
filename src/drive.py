@@ -8,13 +8,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 import queue
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class GoogleDrive:
     CLIENT_SECRET_FILE = 'client_secret_PSync.json'
     API_NAME = 'drive'
     API_VERSION = 'v3'
-    SCOPE = 'https://www.googleapis.com/auth/drive'
+    SCOPE = ['https://www.googleapis.com/auth/drive.activity', 'https://www.googleapis.com/auth/drive']
 
     def __init__(self, local_path, remote_path, logger, rclone):
         self.local_path = local_path
@@ -46,6 +46,13 @@ class GoogleDrive:
         try:
             self.service = build(self.API_NAME, self.API_VERSION, credentials=cred)
             print(self.API_NAME, 'service created successfully')
+        except Exception as e:
+            print('Unable to connect.')
+            print(e)
+        
+        try:
+            self.activity_service = build('driveactivity', 'v2', credentials=cred)
+            print('activity', 'service created successfully')
         except Exception as e:
             print('Unable to connect.')
             print(e)
@@ -83,28 +90,7 @@ class GoogleDrive:
         format = ("%Y-%m-%d%H:%M:%S.%f")
         return datetime.strptime(date, format)    
 
-    def check_if_change(self, change_element):
-        '''
-            With the change information of the google drive api one can not tell if a file/folder was only viewed or if there appeared a real change. 
-            To obtain this information we can have a look at the different time stamps the api provides. The timestamps however are not modified when 
-            a file is trashed, untrashed or moved. It is only modified when the file/folder, when it is viewed or, when the file is renamed. so to obtain
-            if there was a real change we first check if the modify timestamp is more recent than the view timestamp. If so we can be sure, that the change
-            is caused by a rename or creation. If not the we also need to check if change is caused by a file view. For that we check if the file view
-            happened within a period to seconds before the file change until the file change was recorded, so we can be sure about it. If it is outside 
-            this range it will be also treated as a real change and if not than nothing happens.
-        '''
-        if change_element['file_view'] == change_element['file_create']:
-            return True
-
-        # check if the last change was a view on the file or a real change such as a rename
-        if change_element['file_view'] > change_element['file_modify']:
-            # check if the change is caused by the file view or another operation such as a file move
-            if change_element['file_view'] > (change_element['change_time'] - timedelta(0,2)): 
-                return False
-
-        return True
-
-    def check_if_trueChange(self, change_element, local_history):
+    def check_if_localChange(self, change_element, local_history):
         ''' 
         Check if the path also exists in the local changes, and if so delete it.
         '''
@@ -119,10 +105,49 @@ class GoogleDrive:
 
         return True
 
-    def check_if_lastChange(self, change_element, last_change_element):
-        if change_element['fileId'] != last_change_element['fileId']: return False
+    def check_change(self, change_element, last_change_element, local_history):
+        # check if the change comes from the right folder
+        if not change_element['path'].startswith(self.remote_path):
+            return False
 
-        if change_element['']
+        # check if the second upload provides only thumbnail information
+        if (last_change_element != None and
+            change_element['id'] == last_change_element['id'] and 
+            change_element['thumbnail'] == True and 
+            last_change_element['thumbnail'] == False): 
+            return False
+
+        # check if the change is caused by a view on the file or a real change such as a rename/move/creation
+        if (change_element['timestamps']['file_view'] != change_element['timestamps']['file_create'] and
+            change_element['timestamps']['file_view'] > change_element['timestamps']['file_modify'] and
+            change_element['timestamps']['file_view'] > (change_element['timestamps']['change_time'] - timedelta(0,2))):
+            return False
+
+        return self.check_if_localChange(change_element, local_history)
+
+    def get_path(self, parent_id):
+        path = ''
+
+        parent = {'name' : ''}
+
+        while parent_id:
+            parent = self.service.files().get(fileId=parent_id, fields='*').execute()
+            path = '/' + parent['name'] + path
+            parent_id = parent['parents'][0] if 'parents' in parent else None
+
+        path = path.removeprefix('/Meine Ablage')
+        path = self.remote_path.split(':')[0] + ':' + path
+
+        return path
+
+    def classify(self, change_element, activity):
+        change_element['action'] = list(activity['primaryActionDetail'].keys())[0]
+        
+        if change_element['action'] == 'move':
+            old_parent = activity['primaryActionDetail']['move']['removedParents'][0]['driveItem']['name'].removeprefix('items/')
+            change_element['old_path'] = self.get_path(old_parent)
+        elif change_element['action'] == 'rename':
+            change_element['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
 
     def retrieve_changes(self, changes, remote_history, local_history, start_change_id=None):
         result = []
@@ -130,8 +155,7 @@ class GoogleDrive:
         page_token = response["startPageToken"]
         next_page_token = page_token
 
-        last_change_element = ''
-
+        last_change_element = None
         while True:
             param = {}
             if start_change_id:
@@ -146,30 +170,34 @@ class GoogleDrive:
 
             if drive_changes != []:
                 for change in drive_changes:
-                    self.separate(change)
+                    #self.separate(change)
                     try: v = self.str_to_date(change['file']['viewedByMeTime']) 
                     except: v = self.str_to_date(change['file']['createdTime'])
 
-                    change_element = {'removed': change['file']['trashed'], 
-                        'name': change['file']['name'], 
-                        'id': change['fileId'], 
-                        'parent' : change['file']['parents'][0], 
-                        'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
+                    timestamps = {
                         'change_time' : self.str_to_date(change['time']),
                         'file_create' : self.str_to_date(change['file']['createdTime']),
                         'file_modify' : self.str_to_date(change['file']['modifiedTime']),
-                        'file_view' : v}
+                        'file_view' : v
+                    }
+                    
+                    change_element = {'removed': change['file']['trashed'], 
+                        'name' : change['file']['name'], 
+                        'id' : change['fileId'], 
+                        'path' : self.get_path(change['file']['parents'][0]),
+                        'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
+                        'timestamps' : timestamps,
+                        'thumbnail' : change['file']['hasThumbnail']}
+                    
+                    if self.check_change(change_element, last_change_element, local_history):
+                        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][0]
+                        self.separate(activity)
+                        self.classify(change_element, activity)
 
-                    if self.check_if_lastChange(change_element, last_change_element):
-                        if self.check_if_change(change_element):
-                            self.get_path(change_element)
-                            if self.check_if_trueChange(change_element, local_history):   
-                                # to check if the change comes from the right folder
-                                if change_element['path'].startswith(self.remote_path):
-                                    changes.put(change_element)
-                                    remote_history.put(change_element)
+                        changes.put(change_element)
+                        remote_history.put(change_element)
 
-                    last_change_element = change
+                    last_change_element = change_element
 
             page_token = next_page_token
 
@@ -178,23 +206,30 @@ class GoogleDrive:
                 time.sleep(1)
                 next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
 
-    def get_path(self, change_element):
-        file_id = change_element['id']
-        file = self.service.files().get(fileId=file_id, fields='*').execute()
+    def get_time_filter(self, last_checked = (datetime.now(timezone.utc) - timedelta(0,10)).isoformat()):
+        time_end = (datetime.now(timezone.utc) - timedelta(0,5)).isoformat()
+        time_filter = f'time >= \"{last_checked}\"'
+        time_filter = time_filter[0:28] + '+00:00"'
+        time_filter += f' AND time <= \"{time_end}\"'
+        time_filter = time_filter[0:-14] + '+00:00"'
+        return (time_filter, time_end)
 
-        path = '/' + change_element['name']
+    def get_activity(self):
+        time_filter, last_checked = self.get_time_filter()
+        
+        while True:
+            print(time_filter)
+            activity = self.activity_service.activity().query(body={'filter' : time_filter}).execute()
 
-        parent_id = change_element['parent']
-        parent = {'name' : ''}
+            time_filter, last_checked = self.get_time_filter(last_checked)
 
-        while parent_id:
-            parent = self.service.files().get(fileId=parent_id, fields='*').execute()
-            path = '/' + parent['name'] + path
-            parent_id = parent['parents'][0] if 'parents' in parent else None
-
-        path = path.removeprefix('/Meine Ablage')
-        path = self.remote_path.split(':')[0] + ':' + path
-        change_element['path'] = path
+            if activity != {}: self.separate(activity)
+            else: print('Nothing to do')
+            time.sleep(5)
+        # Iterate through the list of activities
+        #for event in activity['events']:
+        #    # Print the activity details
+        #    print(f'Activity {event["id"]} of type {event["activityType"]} occurred on {event["eventTime"]}')
 
     def sync_changes(self, changes):
         while(True):
@@ -215,6 +250,6 @@ class GoogleDrive:
         self.create_service()
         rc = threading.Thread(target=self.retrieve_changes, args=(changes, remote_history, local_history))
         sc = threading.Thread(target=self.sync_changes, args=(changes,))
-
+        #self.get_activity()
         rc.start()
         sc.start()

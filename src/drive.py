@@ -12,8 +12,6 @@ from datetime import datetime, timedelta, timezone
 
 class GoogleDrive:
     CLIENT_SECRET_FILE = 'client_secret_PSync.json'
-    API_NAME = 'drive'
-    API_VERSION = 'v3'
     SCOPE = ['https://www.googleapis.com/auth/drive.activity', 'https://www.googleapis.com/auth/drive']
 
     def __init__(self, local_path, remote_path, logger, rclone):
@@ -23,11 +21,11 @@ class GoogleDrive:
         self.rclone = rclone
 
     def create_service(self):
-        print(self.CLIENT_SECRET_FILE, self.API_NAME, self.API_VERSION, self.SCOPE, sep='-')
+        print(self.CLIENT_SECRET_FILE, self.SCOPE, sep='-')
 
         cred = None
 
-        pickle_file = f'token_{self.API_NAME}_{self.API_VERSION}.pickle'
+        pickle_file = f'token_drive_api.pickle'
 
         if os.path.exists(pickle_file):
             with open(pickle_file, 'rb') as token:
@@ -44,8 +42,8 @@ class GoogleDrive:
         print(cred.valid)
 
         try:
-            self.service = build(self.API_NAME, self.API_VERSION, credentials=cred)
-            print(self.API_NAME, 'service created successfully')
+            self.service = build('drive', 'v3', credentials=cred)
+            print('drive', 'service created successfully')
         except Exception as e:
             print('Unable to connect.')
             print(e)
@@ -56,34 +54,6 @@ class GoogleDrive:
         except Exception as e:
             print('Unable to connect.')
             print(e)
-
-    def separate(self, e, tabs=0):
-        t = ''
-        for n in range(0, tabs):
-            t = t + '\t'
-
-        for i in zip(e.keys(), e.values()):
-            if type(i[1]) in [str, int, bool, float]: 
-                print(f'{t}{i[0]} : {i[1]}')
-            elif type(i[1]) == dict: 
-                print(f'{t}{i[0]} : ')
-                self.separate(i[1], tabs=tabs+1)
-            else:
-                print(f'{t}{i[0]} : ')
-                self.separate2(i[1], tabs=tabs+1)
-    
-    def separate2(self, e, tabs=0):
-        t = ''
-        for n in range(0, tabs):
-            t = t + '\t'
-
-        for i in e:
-            if type(i) in [str, int, bool, float]: 
-                print(f'{t}{i}')
-            elif type(i) == dict:
-                self.separate(i, tabs=tabs+1)
-            else:
-                self.separate2(i, tabs=tabs+1)
 
     def str_to_date(self, s):
         date = s.replace('T', '', 1).replace('Z', '', 1)
@@ -105,11 +75,7 @@ class GoogleDrive:
 
         return True
 
-    def check_change(self, change_element, last_change_element, local_history):
-        # check if the change comes from the right folder
-        if not change_element['path'].startswith(self.remote_path):
-            return False
-
+    def check_change(self, change_element, last_change_element, local_history, activity):
         # check if the second upload provides only thumbnail information
         if (last_change_element != None and
             change_element['id'] == last_change_element['id'] and 
@@ -123,13 +89,11 @@ class GoogleDrive:
             change_element['timestamps']['file_view'] > (change_element['timestamps']['change_time'] - timedelta(0,2))):
             return False
 
-        return self.check_if_localChange(change_element, local_history)
+        # check if the is caused by a real file activity
+        if activity['timestamp'] < (change_element['timestamps']['change_time'] - timedelta(0,2)):
+            return False  
 
-    def check_activity(self, change_element, activity):
-        activity['timestamp'] = self.str_to_date(activity['timestamp'])
-        if activity['timestamp'] > (change_element['timestamps']['change_time'] - timedelta(0,2)):
-            return True
-        return False
+        return self.check_if_localChange(change_element, local_history)        
 
     def get_path(self, parent_id):
         path = ''
@@ -146,17 +110,37 @@ class GoogleDrive:
 
         return path
 
-    def classify(self, change_element, activity):
+    def classify(self, change_element, last_change_element, local_history, activity):
+        if not self.check_change(change_element, last_change_element, local_history, activity):
+            return False
+
         change_element['action'] = list(activity['primaryActionDetail'].keys())[0]
+        change_element['old_path'] = ''
+        change_element['old_name'] = ''
+        
         if change_element['action'] in ['create', 'modify', 'restore']:
             change_element['action'] = 'sync'
         elif change_element['action'] == 'move':
             old_parent = activity['primaryActionDetail']['move']['removedParents'][0]['driveItem']['name'].removeprefix('items/')
             change_element['old_path'] = self.get_path(old_parent)
+
+            if change_element['path'].startswith(self.remote_path) and not change_element['old_path'].startswith(self.remote_path):
+                change_element['action'] = 'sync'
+                change_element['old_path'] = ''
+            elif not change_element['path'].startswith(self.remote_path) and change_element['old_path'].startswith(self.remote_path):
+                change_element['action'] = 'delete'
+                change_element['path'] = change_element['old_path']
+                change_element['old_path'] = ''
+
         elif change_element['action'] == 'rename':
             change_element['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
 
-        print(change_element['action'])
+        # check if the change comes from the right folder
+        if not change_element['path'].startswith(self.remote_path) and not change_element['old_path'].startswith(self.remote_path):
+            print('No Change')
+            return False
+
+        return True         
 
     def retrieve_changes(self, changes, remote_history, local_history, start_change_id=None):
         result = []
@@ -179,7 +163,7 @@ class GoogleDrive:
 
             if drive_changes != []:
                 for change in drive_changes:
-                    #self.separate(change)
+                    #separate_dict(change)
                     try: v = self.str_to_date(change['file']['viewedByMeTime']) 
                     except: v = self.str_to_date(change['file']['createdTime'])
 
@@ -190,21 +174,24 @@ class GoogleDrive:
                         'file_view' : v
                     }
                     
-                    change_element = {'removed': change['file']['trashed'], 
-                        'name' : change['file']['name'], 
+                    change_element = {'name' : change['file']['name'], 
                         'id' : change['fileId'], 
                         'path' : self.get_path(change['file']['parents'][0]),
                         'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
                         'timestamps' : timestamps,
                         'thumbnail' : change['file']['hasThumbnail']}
-                    
-                    if self.check_change(change_element, last_change_element, local_history):
-                        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][0]
-                        if self.check_activity(change_element, activity):
-                            self.classify(change_element, activity)
 
-                            changes.put(change_element)
-                            remote_history.put(change_element)
+                    i = 0
+                    activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+                    activity['timestamp'] = self.str_to_date(activity['timestamp'])
+                    while activity['timestamp'] > change_element['timestamps']['change_time']:
+                        i+=1
+                        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+                        activity['timestamp'] = self.str_to_date(activity['timestamp'])
+
+                    if self.classify(change_element, last_change_element, local_history, activity):
+                        changes.put(change_element)
+                        remote_history.put(change_element)
 
                     last_change_element = change_element
 
@@ -215,43 +202,46 @@ class GoogleDrive:
                 time.sleep(1)
                 next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
 
-    def get_time_filter(self, last_checked = (datetime.now(timezone.utc) - timedelta(0,10)).isoformat()):
-        time_end = (datetime.now(timezone.utc) - timedelta(0,5)).isoformat()
-        time_filter = f'time >= \"{last_checked}\"'
-        time_filter = time_filter[0:28] + '+00:00"'
-        time_filter += f' AND time <= \"{time_end}\"'
-        time_filter = time_filter[0:-14] + '+00:00"'
-        return (time_filter, time_end)
-
-    def get_activity(self):
-        time_filter, last_checked = self.get_time_filter()
-        
-        while True:
-            print(time_filter)
-            activity = self.activity_service.activity().query(body={'filter' : time_filter}).execute()
-
-            time_filter, last_checked = self.get_time_filter(last_checked)
-
-            if activity != {}: self.separate(activity)
-            else: print('Nothing to do')
-            time.sleep(5)
-        # Iterate through the list of activities
-        #for event in activity['events']:
-        #    # Print the activity details
-        #    print(f'Activity {event["id"]} of type {event["activityType"]} occurred on {event["eventTime"]}')
-
     def sync_changes(self, changes):
         while(True):
             change = changes.get()
 
-            if change['removed'] == True and change['folder'] == True:
+            if change['action'] == 'delete' and change['folder'] == True:
                 print('Remove folder')
-            elif change['removed'] == True and change['folder'] == False:
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+            elif change['action'] == 'delete' and change['folder'] == False:
                 print('Remove file')
-            elif change['removed'] == False and change['folder'] == True:
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+            elif change['action'] == 'sync' and change['folder'] == True:
                 print('Copy folder')
-            elif change['removed'] == False and change['folder'] == False:
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+            elif change['action'] == 'sync' and change['folder'] == False:
                 print('Copy file')
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+            elif change['action'] == 'rename' and change['folder'] == True:
+                print('Rename folder')
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+                print(f"\tOldname: {change['old_name']}")
+            elif change['action'] == 'rename' and change['folder'] == False:
+                print('Rename file')
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+                print(f"\tOldname: {change['old_name']}")
+            elif change['action'] == 'move' and change['folder'] == True:
+                print('Move folder')
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+                print(f"\tOldpath: {change['old_path']}") 
+            elif change['action'] == 'move' and change['folder'] == False:
+                print('Move file')
+                print(f"\tName: {change['name']}")
+                print(f"\tPath: {change['path']}")
+                print(f"\tOldpath: {change['old_path']}") 
 
     def run(self, remote_history, local_history):
         changes = queue.Queue()
@@ -259,6 +249,38 @@ class GoogleDrive:
         self.create_service()
         rc = threading.Thread(target=self.retrieve_changes, args=(changes, remote_history, local_history))
         sc = threading.Thread(target=self.sync_changes, args=(changes,))
-        #self.get_activity()
+        
         rc.start()
         sc.start()
+
+
+
+
+
+def separate_dict(self, e, tabs=0):
+    t = ''
+    for n in range(0, tabs):
+        t = t + '\t'
+
+    for i in zip(e.keys(), e.values()):
+        if type(i[1]) in [str, int, bool, float]: 
+            print(f'{t}{i[0]} : {i[1]}')
+        elif type(i[1]) == dict: 
+            print(f'{t}{i[0]} : ')
+            separate_dict(i[1], tabs=tabs+1)
+        else:
+            print(f'{t}{i[0]} : ')
+            separate_list(i[1], tabs=tabs+1)
+
+def separate_list(self, e, tabs=0):
+    t = ''
+    for n in range(0, tabs):
+        t = t + '\t'
+
+    for i in e:
+        if type(i) in [str, int, bool, float]: 
+            print(f'{t}{i}')
+        elif type(i) == dict:
+            separate_dict(i, tabs=tabs+1)
+        else:
+            separate_list(i, tabs=tabs+1)

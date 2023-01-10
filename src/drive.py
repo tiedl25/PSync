@@ -125,6 +125,12 @@ class GoogleDrive:
 
         return self.check_if_localChange(change_element, local_history)
 
+    def check_activity(self, change_element, activity):
+        activity['timestamp'] = self.str_to_date(activity['timestamp'])
+        if activity['timestamp'] > (change_element['timestamps']['change_time'] - timedelta(0,2)):
+            return True
+        return False
+
     def get_path(self, parent_id):
         path = ''
 
@@ -142,12 +148,15 @@ class GoogleDrive:
 
     def classify(self, change_element, activity):
         change_element['action'] = list(activity['primaryActionDetail'].keys())[0]
-        
-        if change_element['action'] == 'move':
+        if change_element['action'] in ['create', 'modify', 'restore']:
+            change_element['action'] = 'sync'
+        elif change_element['action'] == 'move':
             old_parent = activity['primaryActionDetail']['move']['removedParents'][0]['driveItem']['name'].removeprefix('items/')
             change_element['old_path'] = self.get_path(old_parent)
         elif change_element['action'] == 'rename':
             change_element['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
+
+        print(change_element['action'])
 
     def retrieve_changes(self, changes, remote_history, local_history, start_change_id=None):
         result = []
@@ -191,11 +200,11 @@ class GoogleDrive:
                     
                     if self.check_change(change_element, last_change_element, local_history):
                         activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][0]
-                        self.separate(activity)
-                        self.classify(change_element, activity)
+                        if self.check_activity(change_element, activity):
+                            self.classify(change_element, activity)
 
-                        changes.put(change_element)
-                        remote_history.put(change_element)
+                            changes.put(change_element)
+                            remote_history.put(change_element)
 
                     last_change_element = change_element
 

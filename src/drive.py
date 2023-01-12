@@ -140,7 +140,21 @@ class GoogleDrive:
             print('No Change')
             return False
 
-        return True         
+        return True        
+
+    def get_activity(self, change_element):
+        '''
+        Request activity for a given change id. If the change happened before the activity, loop through the activity list until you get a desired one.
+        '''
+        i = 0
+        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+        activity['timestamp'] = self.str_to_date(activity['timestamp'])
+        while activity['timestamp'] > change_element['timestamps']['change_time']:
+            i+=1
+            activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+            activity['timestamp'] = self.str_to_date(activity['timestamp'])
+        
+        return activity
 
     def retrieve_changes(self, changes, remote_history, local_history, start_change_id=None):
         result = []
@@ -149,6 +163,7 @@ class GoogleDrive:
         next_page_token = page_token
 
         last_change_element = None
+        last_folder = None
         while True:
             param = {}
             if start_change_id:
@@ -163,7 +178,6 @@ class GoogleDrive:
 
             if drive_changes != []:
                 for change in drive_changes:
-                    #separate_dict(change)
                     try: v = self.str_to_date(change['file']['viewedByMeTime']) 
                     except: v = self.str_to_date(change['file']['createdTime'])
 
@@ -181,18 +195,15 @@ class GoogleDrive:
                         'timestamps' : timestamps,
                         'thumbnail' : change['file']['hasThumbnail']}
 
-                    i = 0
-                    activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
-                    activity['timestamp'] = self.str_to_date(activity['timestamp'])
-                    while activity['timestamp'] > change_element['timestamps']['change_time']:
-                        i+=1
-                        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
-                        activity['timestamp'] = self.str_to_date(activity['timestamp'])
+                    activity = self.get_activity(change_element)
 
                     if self.classify(change_element, last_change_element, local_history, activity):
-                        changes.put(change_element)
-                        remote_history.put(change_element)
-
+                        if self.folder_check(change_element, last_folder):
+                            last_folder = None
+                            if change_element['folder']: last_folder = change_element
+                            changes.put(change_element)
+                            remote_history.put(change_element)
+                            
                     last_change_element = change_element
 
             page_token = next_page_token
@@ -201,6 +212,14 @@ class GoogleDrive:
             while next_page_token == page_token:
                 time.sleep(1)
                 next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
+
+    def folder_check(self, change_element, last_folder):
+        if last_folder == None:
+            return True
+        if (change_element['path'].startswith(last_folder['path'] + '/' + last_folder['name']) and 
+            last_folder['timestamps']['change_time'] > (change_element['timestamps']['change_time'] - timedelta(0,2))):
+            return False
+        return True
 
     def sync_changes(self, changes):
         while(True):
@@ -242,6 +261,8 @@ class GoogleDrive:
                 print(f"\tName: {change['name']}")
                 print(f"\tPath: {change['path']}")
                 print(f"\tOldpath: {change['old_path']}") 
+            
+
 
     def run(self, remote_history, local_history):
         changes = queue.Queue()

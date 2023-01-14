@@ -65,8 +65,7 @@ class GoogleDrive:
         Check if the path also exists in the local changes, and if so delete it.
         '''
         path = change_element['path'].removeprefix(self.remote_path)
-        path = self.local_path + path
-
+        path = self.local_path + path + '/' + change_element['name']
         for i in list(local_history.queue):
             loc_path = i[1] + '/' + i[2]
             if path == loc_path: 
@@ -75,12 +74,10 @@ class GoogleDrive:
 
         return True
 
-    def check_change(self, change_element, last_change_element, local_history, activity):
+    def check_change(self, change_element, last_change_element, local_history, activity, last_folder):
         # check if the second upload provides only thumbnail information
-        if (last_change_element != None and
-            change_element['id'] == last_change_element['id'] and 
-            change_element['thumbnail'] == True and 
-            last_change_element['thumbnail'] == False): 
+        if (last_change_element != None and change_element['id'] == last_change_element['id'] and 
+            ((change_element['thumbnail'] == True and last_change_element['thumbnail'] == False))): 
             return False
 
         # check if the change is caused by a view on the file or a real change such as a rename/move/creation
@@ -93,7 +90,10 @@ class GoogleDrive:
         if activity['timestamp'] < (change_element['timestamps']['change_time'] - timedelta(0,2)):
             return False  
 
-        return self.check_if_localChange(change_element, local_history)        
+        if not self.folder_check(change_element, last_folder):
+            return False
+        return True
+        #return self.check_if_localChange(change_element, local_history)        
 
     def get_path(self, parent_id):
         path = ''
@@ -110,8 +110,8 @@ class GoogleDrive:
 
         return path
 
-    def classify(self, change_element, last_change_element, local_history, activity):
-        if not self.check_change(change_element, last_change_element, local_history, activity):
+    def classify(self, change_element, last_change_element, local_history, activity, last_folder):
+        if not self.check_change(change_element, last_change_element, local_history, activity, last_folder):
             return False
 
         change_element['action'] = list(activity['primaryActionDetail'].keys())[0]
@@ -193,27 +193,31 @@ class GoogleDrive:
                         'path' : self.get_path(change['file']['parents'][0]),
                         'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
                         'timestamps' : timestamps,
-                        'thumbnail' : change['file']['hasThumbnail']}
+                        'thumbnail' : change['file']['hasThumbnail'],
+                        'thumbnailLink' : change['file']['thumbnailLink'] if 'thumbnailLink' in change['file'] else ''}
 
                     activity = self.get_activity(change_element)
 
-                    if self.classify(change_element, last_change_element, local_history, activity):
-                        if self.folder_check(change_element, last_folder):
+                    if self.classify(change_element, last_change_element, local_history, activity, last_folder):
+                        if self.check_if_localChange(change_element, local_history):
                             last_folder = None
-                            if change_element['folder']: last_folder = change_element
+                            
                             changes.put(change_element)
                             remote_history.put(change_element)
-                            
+                        if change_element['folder']: last_folder = change_element    
                     last_change_element = change_element
 
             page_token = next_page_token
 
             next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
             while next_page_token == page_token:
-                time.sleep(1)
+                time.sleep(0.5)
                 next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
 
     def folder_check(self, change_element, last_folder):
+        '''
+        Check if an activity is just caused by a change to a parent folder.
+        '''
         if last_folder == None:
             return True
         if (change_element['path'].startswith(last_folder['path'] + '/' + last_folder['name']) and 
@@ -278,30 +282,21 @@ class GoogleDrive:
 
 
 
-def separate_dict(self, e, tabs=0):
+
+def separate(e, tabs=0):
     t = ''
     for n in range(0, tabs):
         t = t + '\t'
-
-    for i in zip(e.keys(), e.values()):
-        if type(i[1]) in [str, int, bool, float]: 
-            print(f'{t}{i[0]} : {i[1]}')
-        elif type(i[1]) == dict: 
-            print(f'{t}{i[0]} : ')
-            separate_dict(i[1], tabs=tabs+1)
-        else:
-            print(f'{t}{i[0]} : ')
-            separate_list(i[1], tabs=tabs+1)
-
-def separate_list(self, e, tabs=0):
-    t = ''
-    for n in range(0, tabs):
-        t = t + '\t'
-
-    for i in e:
-        if type(i) in [str, int, bool, float]: 
-            print(f'{t}{i}')
-        elif type(i) == dict:
-            separate_dict(i, tabs=tabs+1)
-        else:
-            separate_list(i, tabs=tabs+1)
+    if type(e) == dict:
+        for i in zip(e.keys(), e.values()):
+            if type(i[1]) in [str, int, bool, float, datetime]: 
+                print(f'{t}{i[0]} : {i[1]}')
+            else:
+                print(f'{t}{i[0]} : ')
+                separate(i[1], tabs=tabs+1)
+    elif type(e) == list:
+        for i in e:
+            if type(i) in [str, int, bool, float, datetime]: 
+                print(f'{t}{i}')
+            else:
+                separate(i, tabs=tabs+1)

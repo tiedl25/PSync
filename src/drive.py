@@ -203,8 +203,23 @@ class GoogleDrive:
                             last_folder = None
                             
                             changes.put(change_element)
-                            remote_history.put(change_element)
-                        if change_element['folder']: last_folder = change_element    
+
+                            # local filesystem interprets rename/move as delete and create operation -> add also old filename/filepath
+                            if change_element['action'] == 'rename': 
+                                p = change_element['path'].removeprefix(self.remote_path)
+                                p = p.removeprefix('/')
+                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['old_name'])
+                            elif change_element['action'] == 'move': 
+                                p = change_element['old_path'].removeprefix(self.remote_path)
+                                p = p.removeprefix('/')
+                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['name'])
+
+                            p = change_element['path'].removeprefix(self.remote_path)
+                            p = p.removeprefix('/')
+                            remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['name'])
+                            
+                            
+                        if change_element['folder'] and change_element['action'] == 'delete': last_folder = change_element    
                     last_change_element = change_element
 
             page_token = next_page_token
@@ -231,40 +246,28 @@ class GoogleDrive:
 
             if change['action'] == 'delete' and change['folder'] == True:
                 print('Remove folder')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
+                self.rclone.purge(change['path'], change['name'], True)
             elif change['action'] == 'delete' and change['folder'] == False:
                 print('Remove file')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
+                self.rclone.delete(change['path'], change['name'], True)
             elif change['action'] == 'sync' and change['folder'] == True:
                 print('Copy folder')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
+                self.rclone.sync(change['path'], change['name'], True)
             elif change['action'] == 'sync' and change['folder'] == False:
                 print('Copy file')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
+                self.rclone.copy(change['path'], change['name'], True)
             elif change['action'] == 'rename' and change['folder'] == True:
                 print('Rename folder')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
-                print(f"\tOldname: {change['old_name']}")
+                self.rclone.rename(change['path'], change['name'], change['old_name'], True)
             elif change['action'] == 'rename' and change['folder'] == False:
                 print('Rename file')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
-                print(f"\tOldname: {change['old_name']}")
+                self.rclone.rename(change['path'], change['name'], change['old_name'], True)
             elif change['action'] == 'move' and change['folder'] == True:
                 print('Move folder')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
-                print(f"\tOldpath: {change['old_path']}") 
+                self.rclone.move(change['path'], change['name'], change['old_path'], True)
             elif change['action'] == 'move' and change['folder'] == False:
                 print('Move file')
-                print(f"\tName: {change['name']}")
-                print(f"\tPath: {change['path']}")
-                print(f"\tOldpath: {change['old_path']}") 
+                self.rclone.move(change['path'], change['name'], change['old_path'], True)
             
 
 

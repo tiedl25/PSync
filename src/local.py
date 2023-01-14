@@ -26,17 +26,17 @@ class Local:
     def check_if_child(self, child, parent):
         return child.startswith(parent)
 
-    def check_if_trueChange(self, dir_path, filename, q, tmp):
+    def check_if_trueChange(self, dir_path, filename, q):
         ''' 
         Check if the path also exists in the remote changes, and if so delete it.
         '''
         rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
         rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
 
-        for i in tmp:
+        for i in list(q.queue):
+            print(f'{rel_path} == {i}')
             if rel_path == i: 
                 q.get(timeout=2)
-                tmp.remove(i)
                 return False
 
         return True
@@ -61,7 +61,7 @@ class Local:
 
         return True
 
-    def options(self, type_names, dir_path, filename, remote_history, remote_history_tmp, changes, local_history):
+    def options(self, type_names, dir_path, filename, remote_history, changes, local_history):
         '''
         Determines rclone command from the inotify mask
         '''
@@ -80,7 +80,7 @@ class Local:
             self.logger.log(f'Skipping {filename} because it is a hidden file')
             return False
 
-        if not self.check_if_trueChange(dir_path, filename, remote_history, remote_history_tmp):
+        if not self.check_if_trueChange(dir_path, filename, remote_history):
             self.logger.log(f'Skipping {filename} because the change is caused by backsync')
             return False    
 
@@ -141,7 +141,7 @@ class Local:
             except: event = []
 
             if event != []:
-                is_child = self.options(event[0], event[1], event[2], remote_history, remote_history_tmp, changes, local_history)
+                is_child = self.options(event[0], event[1], event[2], remote_history, changes, local_history)
 
             if is_child:
                 changes_tmp = list(changes.queue)

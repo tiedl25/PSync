@@ -37,6 +37,7 @@ class Local:
             print(f'{rel_path} == {i}')
             if rel_path == i: 
                 q.get(timeout=2)
+                tmp.remove(i)
                 return False
 
         return True

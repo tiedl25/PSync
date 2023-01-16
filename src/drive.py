@@ -60,40 +60,40 @@ class GoogleDrive:
         format = ("%Y-%m-%d%H:%M:%S.%f")
         return datetime.strptime(date, format)    
 
-    def check_if_localChange(self, change_element, local_history):
+    def check_if_localChange(self, change_item, local_history):
         ''' 
-        Check if the path also exists in the local changes, and if so delete it.
+        Check if the change was made by the local drive
         '''
-        path = change_element['path'].removeprefix(self.remote_path)
-        path = self.local_path + path + '/' + change_element['name']
-        for i in list(local_history.queue):
-            loc_path = i[1] + '/' + i[2]
-            if path == loc_path: 
-                local_history.get(timeout=2)
+        path = change_item['path'].removeprefix(self.remote_path)
+        path = self.local_path + path + '/' + change_item['name']
+        for tmp in list(local_history.queue):
+            if path == tmp: 
+                local_history.get()
+                self.logger.log(f'Skipping {change_item["name"]} because the change is caused by the local drive')
                 return False
 
         return True
 
-    def check_change(self, change_element, last_change_element, local_history, activity, last_folder):
+    def check_change(self, change_item, last_change_item, local_history, activity, last_folder):
         # check if the second upload provides only thumbnail information
-        if (last_change_element != None and change_element['id'] == last_change_element['id'] and 
-            ((change_element['thumbnail'] == True and last_change_element['thumbnail'] == False))): 
+        if (last_change_item != None and change_item['id'] == last_change_item['id'] and 
+            ((change_item['thumbnail'] == True and last_change_item['thumbnail'] == False))): 
             return False
 
         # check if the change is caused by a view on the file or a real change such as a rename/move/creation
-        if (change_element['timestamps']['file_view'] != change_element['timestamps']['file_create'] and
-            change_element['timestamps']['file_view'] > change_element['timestamps']['file_modify'] and
-            change_element['timestamps']['file_view'] > (change_element['timestamps']['change_time'] - timedelta(0,2))):
+        if (change_item['timestamps']['file_view'] != change_item['timestamps']['file_create'] and
+            change_item['timestamps']['file_view'] > change_item['timestamps']['file_modify'] and
+            change_item['timestamps']['file_view'] > (change_item['timestamps']['change_time'] - timedelta(0,2))):
             return False
 
-        # check if the is caused by a real file activity
-        if activity['timestamp'] < (change_element['timestamps']['change_time'] - timedelta(0,2)):
+        # check if the change is caused by a real file activity
+        if activity['timestamp'] < (change_item['timestamps']['change_time'] - timedelta(0,2)):
             return False  
 
-        if not self.folder_check(change_element, last_folder):
+        if not self.folder_check(change_item, last_folder):
             return False
-        return True
-        #return self.check_if_localChange(change_element, local_history)        
+
+        return True   
 
     def get_path(self, parent_id):
         path = ''
@@ -110,48 +110,48 @@ class GoogleDrive:
 
         return path
 
-    def classify(self, change_element, last_change_element, local_history, activity, last_folder):
-        if not self.check_change(change_element, last_change_element, local_history, activity, last_folder):
+    def classify(self, change_item, last_change_item, local_history, activity, last_folder):
+        if not self.check_change(change_item, last_change_item, local_history, activity, last_folder):
             return False
 
-        change_element['action'] = list(activity['primaryActionDetail'].keys())[0]
-        change_element['old_path'] = ''
-        change_element['old_name'] = ''
+        change_item['action'] = list(activity['primaryActionDetail'].keys())[0]
+        change_item['old_path'] = ''
+        change_item['old_name'] = ''
         
-        if change_element['action'] in ['create', 'modify', 'restore']:
-            change_element['action'] = 'sync'
-        elif change_element['action'] == 'move':
+        if change_item['action'] in ['create', 'modify', 'restore']:
+            change_item['action'] = 'sync'
+        elif change_item['action'] == 'move':
             old_parent = activity['primaryActionDetail']['move']['removedParents'][0]['driveItem']['name'].removeprefix('items/')
-            change_element['old_path'] = self.get_path(old_parent)
+            change_item['old_path'] = self.get_path(old_parent)
 
-            if change_element['path'].startswith(self.remote_path) and not change_element['old_path'].startswith(self.remote_path):
-                change_element['action'] = 'sync'
-                change_element['old_path'] = ''
-            elif not change_element['path'].startswith(self.remote_path) and change_element['old_path'].startswith(self.remote_path):
-                change_element['action'] = 'delete'
-                change_element['path'] = change_element['old_path']
-                change_element['old_path'] = ''
+            if change_item['path'].startswith(self.remote_path) and not change_item['old_path'].startswith(self.remote_path):
+                change_item['action'] = 'sync'
+                change_item['old_path'] = ''
+            elif not change_item['path'].startswith(self.remote_path) and change_item['old_path'].startswith(self.remote_path):
+                change_item['action'] = 'delete'
+                change_item['path'] = change_item['old_path']
+                change_item['old_path'] = ''
 
-        elif change_element['action'] == 'rename':
-            change_element['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
+        elif change_item['action'] == 'rename':
+            change_item['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
 
         # check if the change comes from the right folder
-        if not change_element['path'].startswith(self.remote_path) and not change_element['old_path'].startswith(self.remote_path):
+        if not change_item['path'].startswith(self.remote_path) and not change_item['old_path'].startswith(self.remote_path):
             print('No Change')
             return False
 
         return True        
 
-    def get_activity(self, change_element):
+    def get_activity(self, change_item):
         '''
         Request activity for a given change id. If the change happened before the activity, loop through the activity list until you get a desired one.
         '''
         i = 0
-        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+        activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_item["id"]}'}).execute()['activities'][i]
         activity['timestamp'] = self.str_to_date(activity['timestamp'])
-        while activity['timestamp'] > change_element['timestamps']['change_time']:
+        while activity['timestamp'] > change_item['timestamps']['change_time']:
             i+=1
-            activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_element["id"]}'}).execute()['activities'][i]
+            activity = self.activity_service.activity().query(body={'itemName' : f'items/{change_item["id"]}'}).execute()['activities'][i]
             activity['timestamp'] = self.str_to_date(activity['timestamp'])
         
         return activity
@@ -162,7 +162,7 @@ class GoogleDrive:
         page_token = response["startPageToken"]
         next_page_token = page_token
 
-        last_change_element = None
+        last_change_item = None
         last_folder = None
         while True:
             param = {}
@@ -188,7 +188,7 @@ class GoogleDrive:
                         'file_view' : v
                     }
                     
-                    change_element = {'name' : change['file']['name'], 
+                    change_item = {'name' : change['file']['name'], 
                         'id' : change['fileId'], 
                         'path' : self.get_path(change['file']['parents'][0]),
                         'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
@@ -196,31 +196,31 @@ class GoogleDrive:
                         'thumbnail' : change['file']['hasThumbnail'],
                         'thumbnailLink' : change['file']['thumbnailLink'] if 'thumbnailLink' in change['file'] else ''}
 
-                    activity = self.get_activity(change_element)
+                    activity = self.get_activity(change_item)
 
-                    if self.classify(change_element, last_change_element, local_history, activity, last_folder):
-                        if self.check_if_localChange(change_element, local_history):
+                    if self.classify(change_item, last_change_item, local_history, activity, last_folder):
+                        if self.check_if_localChange(change_item, local_history):
                             last_folder = None
                             
-                            changes.put(change_element)
+                            changes.put(change_item)
 
                             # local filesystem interprets rename/move as delete and create operation -> add also old filename/filepath
-                            if change_element['action'] == 'rename': 
-                                p = change_element['path'].removeprefix(self.remote_path)
+                            if change_item['action'] == 'rename': 
+                                p = change_item['path'].removeprefix(self.remote_path)
                                 p = p.removeprefix('/')
-                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['old_name'])
-                            elif change_element['action'] == 'move': 
-                                p = change_element['old_path'].removeprefix(self.remote_path)
+                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['old_name'])
+                            elif change_item['action'] == 'move': 
+                                p = change_item['old_path'].removeprefix(self.remote_path)
                                 p = p.removeprefix('/')
-                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['name'])
+                                remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['name'])
 
-                            p = change_element['path'].removeprefix(self.remote_path)
+                            p = change_item['path'].removeprefix(self.remote_path)
                             p = p.removeprefix('/')
-                            remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_element['name'])
+                            remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['name'])
                             
                             
-                        if change_element['folder'] and change_element['action'] == 'delete': last_folder = change_element    
-                    last_change_element = change_element
+                        if change_item['folder']: last_folder = change_item    
+                    last_change_item = change_item
 
             page_token = next_page_token
 
@@ -229,14 +229,14 @@ class GoogleDrive:
                 time.sleep(0.5)
                 next_page_token = self.service.changes().getStartPageToken().execute()['startPageToken']
 
-    def folder_check(self, change_element, last_folder):
+    def folder_check(self, change_item, last_folder):
         '''
         Check if an activity is just caused by a change to a parent folder.
         '''
         if last_folder == None:
             return True
-        if (change_element['path'].startswith(last_folder['path'] + '/' + last_folder['name']) and 
-            last_folder['timestamps']['change_time'] > (change_element['timestamps']['change_time'] - timedelta(0,2))):
+        if (change_item['path'].startswith(last_folder['path'] + '/' + last_folder['name']) and 
+            last_folder['timestamps']['change_time'] > (change_item['timestamps']['change_time'] - timedelta(0,2))):
             return False
         return True
 
@@ -245,29 +245,29 @@ class GoogleDrive:
             change = changes.get()
 
             if change['action'] == 'delete' and change['folder'] == True:
-                print('Remove folder')
                 self.rclone.purge(change['path'], change['name'], True)
+
             elif change['action'] == 'delete' and change['folder'] == False:
-                print('Remove file')
                 self.rclone.delete(change['path'], change['name'], True)
+
             elif change['action'] == 'sync' and change['folder'] == True:
-                print('Copy folder')
                 self.rclone.sync(change['path'], change['name'], True)
+
             elif change['action'] == 'sync' and change['folder'] == False:
-                print('Copy file')
                 self.rclone.copy(change['path'], change['name'], True)
+
             elif change['action'] == 'rename' and change['folder'] == True:
-                print('Rename folder')
                 self.rclone.rename(change['path'], change['name'], change['old_name'], True)
+
             elif change['action'] == 'rename' and change['folder'] == False:
-                print('Rename file')
                 self.rclone.rename(change['path'], change['name'], change['old_name'], True)
+
             elif change['action'] == 'move' and change['folder'] == True:
-                print('Move folder')
                 self.rclone.move(change['path'], change['name'], change['old_path'], True)
+
             elif change['action'] == 'move' and change['folder'] == False:
-                print('Move file')
                 self.rclone.move(change['path'], change['name'], change['old_path'], True)
+                
             
 
 

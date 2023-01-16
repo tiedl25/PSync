@@ -1,3 +1,10 @@
+import sys
+import time
+import logging
+from watchdog.observers import Observer
+from watchdog.events import LoggingEventHandler
+from watchdog.events import FileSystemEventHandler
+
 from importlib.resources import path
 import os
 from os.path import basename
@@ -6,7 +13,47 @@ import inotify.adapters
 import pathlib
 import threading
 import queue
-import time
+from logger import Logger
+from rclone import Rclone
+from datetime import datetime
+
+class Handler(FileSystemEventHandler):
+    def __init__(self, changes):
+        self.changes = changes
+        super().__init__()
+
+    def on_any_event(self, event):
+        path = event.src_path.rsplit('/', 1)
+
+        format = ("%Y-%m-%d%H:%M:%S.%f")
+        swap = {
+            'deleted' : 'delete', 
+            'modified' : 'modify',
+            'created' : 'create',
+            'moved' : 'move',
+            'closed' : 'close'
+        }
+
+        change_item = {'name' : path[1], 
+                        'path' : path[0], 
+                        'action' : swap[event.event_type], 
+                        'folder' : event.is_directory, 
+                        'timestamp' : datetime.now().strftime(format)}
+
+        # distinguish between rename and move
+        if change_item['action'] == 'move': 
+            new_path = event.dest_path.rsplit('/', 1)
+            if path[0] == new_path[0]:
+                change_item['name'] = new_path[1]
+                change_item['old_name'] = path[1]
+                change_item['action'] = 'rename'
+            else:
+                change_item['path'] = new_path[0]
+                change_item['old_path'] = path[0]
+
+        if not (change_item['folder'] and change_item['action'] == 'modify'):
+            self.changes.put(change_item)
+
 
 class Local:
     lock = False
@@ -14,117 +61,105 @@ class Local:
     def __init__(self, local_path, remote_path, logger, rclone):
         self.local_path = local_path
         self.remote_path = remote_path
-        self.intfy = inotify.adapters.InotifyTree(self.local_path, mask=(inotify.constants.IN_MOVE | 
-                                                                    inotify.constants.IN_DELETE | 
-                                                                    inotify.constants.IN_CREATE | 
-                                                                    inotify.constants.IN_MODIFY | 
-                                                                    inotify.constants.IN_ATTRIB))                                              
+                                            
         self.extensions = ['.part']
         self.logger = logger
         self.rclone = rclone
 
-    def check_if_child(self, child, parent):
-        return child.startswith(parent)
+    def perform_operation(self, change_item):
+        if change_item['folder']:
+            if change_item['action'] == 'delete' : 
+                self.rclone.purge(change_item['path'], change_item['name']),
 
-    def check_if_trueChange(self, dir_path, filename, q):
-        ''' 
-        Check if the path also exists in the remote changes, and if so delete it.
-        '''
-        rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
-        rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
+            elif change_item['action'] == 'create' : 
+                self.rclone.sync(change_item['path'], change_item['name']),
 
-        for i in list(q.queue):
-            print(f'{rel_path} == {i}')
-            if rel_path == i: 
-                q.get(timeout=2)
-                tmp.remove(i)
-                return False
+            elif change_item['action'] == 'modify' : 
+                self.rclone.sync(change_item['path'], change_item['name']),
 
-        return True
+            elif change_item['action'] == 'close' : 
+                self.rclone.sync(change_item['path'], change_item['name']),
 
-    def check_if_necessary(self, dir_path, filename, q):
-        ''' 
-        Ceck if multiple paths with the same name exist in the local changes, and if so delete the first one.
-        '''
-        rel_dirpath = (dir_path.split(self.local_path)[1])[1:]
-        rel_path = f'{rel_dirpath}/{filename}' if rel_dirpath != '' else filename
-
-        lol = f'{dir_path}/{filename}'
-
-        tmp = list(q.queue)
-
-        for i in tmp:
-            lol2 = f'{i[1]}/{i[2]}'
-            if lol == lol2: 
+            elif change_item['action'] == 'move' : 
+                self.rclone.move(change_item['path'], change_item['name'], change_item['old_path']),
                 
-                q.get(timeout=2)
+            elif change_item['action'] == 'rename' : 
+                self.rclone.rename(change_item['path'], change_item['name'], change_item['old_name']),
+
+        else:       
+            if change_item['action'] == 'delete' : 
+                self.rclone.delete(change_item['path'], change_item['name']),
+
+            elif change_item['action'] == 'create' : 
+                self.rclone.copy(change_item['path'], change_item['name']),
+
+            elif change_item['action'] == 'modify' : 
+                self.rclone.copy(change_item['path'], change_item['name']),
+
+            elif change_item['action'] == 'close' : 
+                self.rclone.copy(change_item['path'], change_item['name']),
+
+            elif change_item['action'] == 'move' : 
+                self.rclone.move(change_item['path'], change_item['name'], change_item['old_path']),
+                
+            elif change_item['action'] == 'rename' : 
+                self.rclone.rename(change_item['path'], change_item['name'], change_item['old_name']),
+
+
+
+    def check_change(self, change_item, remote_history, local_history, changes):
+        # check if the files with specific extensions should be excluded
+        extension = pathlib.Path(change_item['name']).suffix
+        if extension in self.extensions: 
+            self.logger.log(f'Skipping {change_item["name"]} because of extension')
+            return False
+
+        # Needs to be done when also files with the .part extensions are ignored
+        if change_item['action'] == 'rename' and change_item['old_name'].endswith('.part'):
+            change_item['action'] = 'create'
+
+        # check if it's a hidden file
+        if change_item['name'][0] in ['.', '#']:
+            self.logger.log(f'Skipping {change_item["name"]} because it is a hidden file')
+            return False
+            
+        # check if the change was made by the remote drive 
+        path = change_item['path'].removeprefix(self.local_path).removeprefix('/')
+        path = f'{path}/{change_item["name"]}' if path != '' else change_item['name']
+        for tmp in list(remote_history.queue):
+            if path == tmp: 
+                remote_history.get()
+                self.logger.log(f'Skipping {change_item["name"]} because the change is caused by the remote drive')
                 return False
 
+        local_history.put(change_item['path'] + '/' + change_item['name'])
         return True
 
-    def options(self, type_names, dir_path, filename, remote_history, changes, local_history):
-        '''
-        Determines rclone command from the inotify mask
-        '''
-
-        extension = pathlib.Path(filename).suffix
-
-        if extension in self.extensions: 
-            self.logger.log(f'Skipping {filename} because of extension')
-            return False
-
-        if filename == '':
-            self.logger.log(f'Skipping {dir_path} with {type_names} because there is no filename')
-            return False
-
-        if filename[0] in ['.', '#']:
-            self.logger.log(f'Skipping {filename} because it is a hidden file')
-            return False
-
-        if not self.check_if_trueChange(dir_path, filename, remote_history):
-            self.logger.log(f'Skipping {filename} because the change is caused by backsync')
-            return False    
-
-        #if not self.check_if_necessary(dir_path, filename, local_changes):
-        #    self.logger.log(f"Skipping {filename} because it isn't necessary")
-        #    return False
-
-        local_history.put([type_names, dir_path, filename])
-
-        # boolean value -> determines if file/folder has to be copied
-        copy = type_names[0] == 'IN_MOVED_TO' or type_names[0] ==  'IN_CREATE' or type_names[0] ==  'IN_MODIFY' or type_names[0] ==  'IN_ATTRIB'
-
-        if (type_names[0] == 'IN_MOVED_FROM' and len(type_names) == 1) or (type_names[0] == 'IN_DELETE' and len(type_names) == 1):
-            self.rclone.delete(dir_path, filename)
-            return False
-
-        elif copy and len(type_names) == 1:
-            self.rclone.copy(dir_path, filename)
-            return False
-
-        elif (type_names[0] == 'IN_MOVED_FROM' and type_names[1] == 'IN_ISDIR') or (type_names[0] == 'IN_DELETE' and type_names[1] == 'IN_ISDIR'):
-            self.rclone.purge(dir_path, filename)
-            return False
-
-        elif copy and type_names[1] == 'IN_ISDIR':
-            self.rclone.sync(dir_path, filename)
-            return True
+    def remove_children(self, change, changes):
+        for tmp in list(changes.queue):
+            child = f'{tmp["path"]}/{tmp["name"]}'
+            parent = f'{change["path"]}/{change["name"]}'
+            if child.startswith(parent):
+                changes.get()
 
     def change_listener(self, changes):
-        for event in self.intfy.event_gen(yield_nones=False):
-            (_, type_names, dirpath, filename) = event
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s - %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
 
-            changes.put([type_names, dirpath, filename])
-            Local.lock = True
+        event_handler = Handler(changes)
+        observer = Observer()
+        observer.schedule(event_handler, self.local_path, recursive=True)
+        observer.start()
+        try:
+            while True:
+                time.sleep(1)
+        finally:
+            observer.stop()
+            observer.join()
 
     def sync_service(self, changes, remote_history, local_history):
-        com = ''
-        is_child = False
-
         locked = False
-        remote_history_tmp = []
-
-        parent = ''
 
         while(True):
             # wait until backsync is finished
@@ -134,23 +169,14 @@ class Local:
 
             # after backsync is finished get remote_changes and store in list for efficient access
             if locked:
-                remote_history_tmp = list(remote_history.queue)
                 locked = False
 
-            try: 
-                event = changes.get(timeout=1)
-            except: event = []
+            change_item = changes.get()
+            print(change_item)
+            if self.check_change(change_item, remote_history, local_history, changes):
+                self.perform_operation(change_item)
+                self.remove_children(change_item, changes)
 
-            if event != []:
-                is_child = self.options(event[0], event[1], event[2], remote_history, changes, local_history)
-
-            if is_child:
-                changes_tmp = list(changes.queue)
-                for tmp in changes_tmp:
-                    if self.check_if_child(f'{tmp[1]}/{tmp[2]}', f'{event[1]}/{event[2]}'):
-                        changes.get()
-
-                is_child = False
             Local.lock = True if changes.qsize() > 0 else False
 
     def run(self, remote_history, local_history):

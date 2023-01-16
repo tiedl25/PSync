@@ -10,20 +10,20 @@ class Rclone:
 
     def sync(self, dirpath, filename, local=False):
         if local:
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
         else: 
-            destpath = self.remote_path + dirpath.split(self.local_path)[1]
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone sync {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
         self.logger.log(command)
         os.system(command)
 
     def copy(self, dirpath, filename, local=False):
         if local: 
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}"'
         else: 
-            destpath = self.remote_path + dirpath.split(self.local_path)[1]
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}"'
 
         self.logger.log(command)
@@ -31,10 +31,10 @@ class Rclone:
 
     def purge(self, dirpath, foldername, local=False):
         if local: 
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             command = f'rm -R "{destpath}/{foldername}"'
         else: 
-            destpath = self.remote_path + dirpath.split(self.local_path)[1]
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone purge {self.verbose}"{destpath}/{foldername}"'
         
         self.logger.log(command)
@@ -42,10 +42,10 @@ class Rclone:
 
     def delete(self, dirpath, filename, local=False):
         if local: 
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             command = f'rm -R "{destpath}/{filename}"'
         else: 
-            destpath = self.remote_path + dirpath.split(self.local_path)[1]
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone delete {self.verbose}"{destpath}/{filename}"'
 
         self.logger.log(command)
@@ -53,17 +53,24 @@ class Rclone:
 
     def rename(self, dirpath, filename, oldname, local=False):
         if local:
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             command = f'mv "{destpath}/{oldname}" "{destpath}/{filename}"'
+        else:
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
+            command = f'rclone moveto {self.verbose}"{destpath}/{oldname}" "{destpath}/{filename}"'
         
         self.logger.log(command)
         os.system(command)
 
     def move(self, dirpath, filename, oldpath, local=False):
         if local:
-            destpath = self.local_path + dirpath.split(self.remote_path)[1]
-            olddestpath = self.local_path + oldpath.split(self.remote_path)[1]
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
+            olddestpath = self.local_path + oldpath.removeprefix(self.remote_path)
             command = f'mv "{olddestpath}/{filename}" "{destpath}/{filename}"'
+        else:
+            destpath = self.remote_path + dirpath.removeprefix(self.local_path)
+            olddestpath = self.remote_path + oldpath.removeprefix(self.local_path)
+            command = f'rclone moveto {self.verbose}"{olddestpath}/{filename}" "{destpath}/{filename}"'
 
         self.logger.log(command)
         os.system(command)

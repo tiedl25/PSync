@@ -74,20 +74,21 @@ class GoogleDrive:
 
         return True
 
-    def check_change(self, change_item, last_change_item, local_history, activity, last_folder):
-        # check if the second upload provides only thumbnail information
-        if (last_change_item != None and change_item['id'] == last_change_item['id'] and 
-            ((change_item['thumbnail'] == True and last_change_item['thumbnail'] == False))): 
+    def check_change(self, change_item, last_change_item, local_history, last_folder):
+        # check if a file triggers multiple changes but only shows one action
+        if last_change_item != None and change_item['id'] == last_change_item['id'] and change_item['timestamps']['activity_timestamp'] == last_change_item['timestamps']['activity_timestamp']:
+            self.logger.log(f'Skipping because {change_item["name"]} because the previous change complied with it already')
             return False
 
         # check if the change is caused by a view on the file or a real change such as a rename/move/creation
         if (change_item['timestamps']['file_view'] != change_item['timestamps']['file_create'] and
             change_item['timestamps']['file_view'] > change_item['timestamps']['file_modify'] and
             change_item['timestamps']['file_view'] > (change_item['timestamps']['change_time'] - timedelta(0,2))):
+            self.logger.log(f'Skipping {change_item["name"]} because it\'s only a view on the file/folder')
             return False
 
         # check if the change is caused by a real file activity
-        if activity['timestamp'] < (change_item['timestamps']['change_time'] - timedelta(0,2)):
+        if change_item['timestamps']['activity_timestamp'] < (change_item['timestamps']['change_time'] - timedelta(0,2)):
             return False  
 
         if not self.folder_check(change_item, last_folder):
@@ -111,7 +112,7 @@ class GoogleDrive:
         return path
 
     def classify(self, change_item, last_change_item, local_history, activity, last_folder):
-        if not self.check_change(change_item, last_change_item, local_history, activity, last_folder):
+        if not self.check_change(change_item, last_change_item, local_history, last_folder):
             return False
 
         change_item['action'] = list(activity['primaryActionDetail'].keys())[0]
@@ -185,18 +186,17 @@ class GoogleDrive:
                         'change_time' : self.str_to_date(change['time']),
                         'file_create' : self.str_to_date(change['file']['createdTime']),
                         'file_modify' : self.str_to_date(change['file']['modifiedTime']),
-                        'file_view' : v
-                    }
-                    
+                        'file_view' : v}
+
                     change_item = {'name' : change['file']['name'], 
                         'id' : change['fileId'], 
                         'path' : self.get_path(change['file']['parents'][0]),
                         'folder' : True if change['file']['mimeType'] == 'application/vnd.google-apps.folder' else False,
-                        'timestamps' : timestamps,
-                        'thumbnail' : change['file']['hasThumbnail'],
-                        'thumbnailLink' : change['file']['thumbnailLink'] if 'thumbnailLink' in change['file'] else ''}
+                        'timestamps' : timestamps}
 
                     activity = self.get_activity(change_item)
+
+                    change_item['timestamps'].update({'activity_timestamp' : activity['timestamp']})
 
                     if self.classify(change_item, last_change_item, local_history, activity, last_folder):
                         if self.check_if_localChange(change_item, local_history):
@@ -243,7 +243,6 @@ class GoogleDrive:
     def sync_changes(self, changes):
         while(True):
             change = changes.get()
-
             if change['action'] == 'delete' and change['folder'] == True:
                 self.rclone.purge(change['path'], change['name'], True)
 

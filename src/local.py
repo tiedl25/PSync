@@ -23,6 +23,7 @@ class Handler(FileSystemEventHandler):
         super().__init__()
 
     def on_any_event(self, event):
+        
         path = event.src_path.rsplit('/', 1)
 
         format = ("%Y-%m-%d%H:%M:%S.%f")
@@ -50,10 +51,9 @@ class Handler(FileSystemEventHandler):
             else:
                 change_item['path'] = new_path[0]
                 change_item['old_path'] = path[0]
-
+        
         if not (change_item['folder'] and change_item['action'] == 'modify'):
-            self.changes.put(change_item)
-
+            self.changes.put(change_item)         
 
 class Local:
     lock = False
@@ -122,6 +122,10 @@ class Local:
         if change_item['name'][0] in ['.', '#']:
             self.logger.log(f'Skipping {change_item["name"]} because it is a hidden file')
             return False
+
+        if not self.remove_duplicates(change_item, changes):
+            self.logger.log(f'Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete')
+            return False
             
         # check if the change was made by the remote drive 
         path = change_item['path'].removeprefix(self.local_path).removeprefix('/')
@@ -139,8 +143,24 @@ class Local:
         for tmp in list(changes.queue):
             child = f'{tmp["path"]}/{tmp["name"]}'
             parent = f'{change["path"]}/{change["name"]}'
-            if child.startswith(parent):
+            if child != parent and child.startswith(parent):
                 changes.get()
+
+    def remove_duplicates(self, change, changes):
+        new_changes = queue.Queue()
+        keep_change = True
+        for tmp in list(changes.queue):
+            if (f'{change["path"]}/{change["name"]}' == f'{tmp["path"]}/{tmp["name"]}'):
+                changes.get()
+                if ((change['action'] in ['create', 'modify', 'close'] and tmp['action'] == 'delete') or
+                    (tmp['action'] in ['create', 'modify', 'close'] and change['action'] == 'delete')):
+                    keep_change = False
+                elif (tmp['action'] and change['action']) in ['create', 'modify', 'close'] or (tmp['action'] and change['action']) == 'delete':
+                    keep_change = True
+                    self.logger.log(f'Skipping {tmp["name"]} because it is a duplicate')
+                else:
+                    changes.put(tmp)        
+        return keep_change
 
     def change_listener(self, changes):
         logging.basicConfig(level=logging.INFO,
@@ -170,9 +190,9 @@ class Local:
             # after backsync is finished get remote_changes and store in list for efficient access
             if locked:
                 locked = False
-
+            
             change_item = changes.get()
-            print(change_item)
+            #print(change_item)
             if self.check_change(change_item, remote_history, local_history, changes):
                 self.perform_operation(change_item)
                 self.remove_children(change_item, changes)
@@ -186,4 +206,5 @@ class Local:
         ss = threading.Thread(target=self.sync_service, args=(changes, remote_history, local_history,))
 
         ch.start()
+        #time.sleep(10)
         ss.start()

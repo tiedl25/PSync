@@ -219,7 +219,8 @@ class GoogleDrive:
                             remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['name'])
                             
                             
-                        if change_item['folder']: last_folder = change_item    
+                        if change_item['folder'] and self.folder_check(change_item, last_folder):
+                            last_folder = change_item    
                     last_change_item = change_item
 
             page_token = next_page_token

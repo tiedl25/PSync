@@ -69,7 +69,7 @@ class GoogleDrive:
         for tmp in list(local_history.queue):
             if path == tmp: 
                 local_history.get()
-                self.logger.log(f'Skipping {change_item["name"]} because the change is caused by the local drive')
+                self.logger.log(f'Drive: Skipping {change_item["name"]} because the change is caused by the local drive')
                 return False
 
         return True
@@ -77,14 +77,14 @@ class GoogleDrive:
     def check_change(self, change_item, last_change_item, local_history, last_folder):
         # check if a file triggers multiple changes but only shows one action
         if last_change_item != None and change_item['id'] == last_change_item['id'] and change_item['timestamps']['activity_timestamp'] == last_change_item['timestamps']['activity_timestamp']:
-            self.logger.log(f'Skipping because {change_item["name"]} because the previous change complied with it already')
+            self.logger.log(f'Drive: Skipping {change_item["name"]} because the previous change complied with it already')
             return False
 
         # check if the change is caused by a view on the file or a real change such as a rename/move/creation
         if (change_item['timestamps']['file_view'] != change_item['timestamps']['file_create'] and
             change_item['timestamps']['file_view'] > change_item['timestamps']['file_modify'] and
             change_item['timestamps']['file_view'] > (change_item['timestamps']['change_time'] - timedelta(0,2))):
-            self.logger.log(f'Skipping {change_item["name"]} because it\'s only a view on the file/folder')
+            self.logger.log(f'Drive: Skipping {change_item["name"]} because it\'s only a view on the file/folder')
             return False
 
         # check if the change is caused by a real file activity
@@ -179,6 +179,8 @@ class GoogleDrive:
 
             if drive_changes != []:
                 for change in drive_changes:
+                    if 'file' not in change:
+                        continue
                     try: v = self.str_to_date(change['file']['viewedByMeTime']) 
                     except: v = self.str_to_date(change['file']['createdTime'])
 
@@ -219,7 +221,7 @@ class GoogleDrive:
                             remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['name'])
                             
                             
-                        if change_item['folder'] and self.folder_check(change_item, last_folder):
+                        if change_item['folder'] and change_item['action'] == 'delete' and self.folder_check(change_item, last_folder):
                             last_folder = change_item    
                     last_change_item = change_item
 

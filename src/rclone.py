@@ -32,7 +32,7 @@ class Rclone:
     def purge(self, dirpath, foldername, local=False):
         if local: 
             destpath = self.local_path + dirpath.removeprefix(self.remote_path)
-            command = f'rm -R "{destpath}/{foldername}"'
+            command = f'trash-put "{destpath}/{foldername}"'
         else: 
             destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone purge {self.verbose}"{destpath}/{foldername}"'
@@ -43,7 +43,7 @@ class Rclone:
     def delete(self, dirpath, filename, local=False):
         if local: 
             destpath = self.local_path + dirpath.removeprefix(self.remote_path)
-            command = f'rm -R "{destpath}/{filename}"'
+            command = f'trash-put "{destpath}/{filename}"'
         else: 
             destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone delete {self.verbose}"{destpath}/{filename}"'

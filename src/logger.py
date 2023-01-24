@@ -23,11 +23,17 @@ class Logger:
             file.write(data)
             file.write('\n')
 
-    def log(self, data):
+    def log(self, data, color=''):
         if(type(data) != str):
             data = str(data)
 
         self.file(self.logfile, data)
+
+        if color == 'red':
+            data = f"\033[91m{data}\033[00m"
+        elif color == 'green':
+            data = f"\033[92m{data}\033[00m"
+
         if self.verbose: self.console(data)
         
     def debug(self, data):

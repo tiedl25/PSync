@@ -14,7 +14,7 @@ class Rclone:
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
         else: 
             destpath = self.remote_path + dirpath.removeprefix(self.local_path)
-            command = f'rclone sync {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
+            command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
         self.logger.log(command)
         os.system(command)
 

@@ -9,6 +9,7 @@ from importlib.resources import path
 import os
 from os.path import basename
 import remote
+import drive
 import inotify.adapters
 import pathlib
 import threading
@@ -56,17 +57,18 @@ class Handler(FileSystemEventHandler):
             self.changes.put(change_item)         
 
 class Local:
-    lock = False
-
-    def __init__(self, local_path, remote_path, logger, rclone):
+    def __init__(self, local_path, remote_path, logger, rclone, lock):
         self.local_path = local_path
         self.remote_path = remote_path
                                             
         self.extensions = ['.part']
         self.logger = logger
         self.rclone = rclone
+        self.lock = lock
 
     def perform_operation(self, change_item):
+        self.lock.lock = True
+
         if change_item['folder']:
             if change_item['action'] == 'delete' : 
                 self.rclone.purge(change_item['path'], change_item['name']),
@@ -105,13 +107,15 @@ class Local:
             elif change_item['action'] == 'rename' : 
                 self.rclone.rename(change_item['path'], change_item['name'], change_item['old_name']),
 
+        self.lock.lock = False
+
 
 
     def check_change(self, change_item, remote_history, local_history, changes):
         # check if the files with specific extensions should be excluded
         extension = pathlib.Path(change_item['name']).suffix
         if extension in self.extensions: 
-            self.logger.log(f'Local: Skipping {change_item["name"]} because of extension')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because of extension', 'green')
             return False
 
         # Needs to be done when also files with the .part extensions are ignored
@@ -120,11 +124,11 @@ class Local:
 
         # check if it's a hidden file
         if change_item['name'][0] in ['.', '#']:
-            self.logger.log(f'Local: Skipping {change_item["name"]} because it is a hidden file')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because it is a hidden file', 'green')
             return False
 
         if not self.remove_duplicates(change_item, changes):
-            self.logger.log(f'Local: Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete', 'green')
             return False
             
         # check if the change was made by the remote drive 
@@ -133,7 +137,7 @@ class Local:
         for tmp in list(remote_history.queue):
             if path == tmp: 
                 remote_history.get()
-                self.logger.log(f'Local: Skipping {change_item["name"]} because the change is caused by the remote drive')
+                self.logger.log(f'Local: Skipping {change_item["name"]} because the change is caused by the remote drive', 'green')
                 return False
 
         local_history.put(change_item['path'] + '/' + change_item['name'])
@@ -145,7 +149,7 @@ class Local:
             parent = f'{change["path"]}/{change["name"]}'
             if child != parent and child.startswith(parent):
                 changes.get()
-                self.logger.log(f'Local: Skipping {tmp["name"]} because it is a child')
+                self.logger.log(f'Local: Skipping {tmp["name"]} because it is a child', 'green')
 
     def remove_duplicates(self, change, changes):
         new_changes = queue.Queue()
@@ -158,7 +162,7 @@ class Local:
                     keep_change = False
                 elif (tmp['action'] and change['action']) in ['create', 'modify', 'close'] or (tmp['action'] and change['action']) == 'delete':
                     keep_change = True
-                    self.logger.log(f'Local: Skipping {tmp["name"]} because it is a duplicate')
+                    self.logger.log(f'Local: Skipping {tmp["name"]} because it is a duplicate', 'green')
                 else:
                     changes.put(tmp)        
         return keep_change
@@ -183,22 +187,19 @@ class Local:
         locked = False
 
         while(True):
+            change_item = changes.get()
+
             # wait until backsync is finished
-            while remote.Remote.lock == True:
-                time.sleep(1)
+            while self.lock.lock == True:
+                time.sleep(0.1)
                 locked = True
 
-            # after backsync is finished get remote_changes and store in list for efficient access
-            if locked:
-                locked = False
-            
-            change_item = changes.get()
             #print(change_item)
             if self.check_change(change_item, remote_history, local_history, changes):
                 self.perform_operation(change_item)
-                self.remove_children(change_item, changes)
+            self.remove_children(change_item, changes)
 
-            Local.lock = True if changes.qsize() > 0 else False
+            #Local.lock = True if changes.qsize() > 0 else False
 
     def run(self, remote_history, local_history):
         changes = queue.Queue()
@@ -207,5 +208,4 @@ class Local:
         ss = threading.Thread(target=self.sync_service, args=(changes, remote_history, local_history,))
 
         ch.start()
-        #time.sleep(10)
         ss.start()

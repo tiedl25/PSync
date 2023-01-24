@@ -1,3 +1,17 @@
 _try_*
 __pycache__
 .vscode
+client_secret_PSync.json
+token_drive_api.pickle
+__init__.py
+MANIFEST.in
+build
+dist
+psync.egg-info
+pkg
+.env
+.directory
+log.txt
+debug.txt
+compare*
+test.py

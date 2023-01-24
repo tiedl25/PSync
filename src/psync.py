@@ -8,6 +8,9 @@ from rclone import Rclone
 from drive import GoogleDrive
 import threading
 
+class Lock:
+    lock = False
+
 class Psync:
     def check_flags(self):   
         '''
@@ -26,14 +29,16 @@ class Psync:
 
         self.logger = Logger(self.flags['verbose'])
         self.rclone = Rclone(self.local_path, self.remote_path, self.flags['verbose'], self.logger)
+        self.lock = Lock()
 
         self.check_flags()
 
-        self.local = Local(self.local_path, self.remote_path, self.logger, self.rclone)
+        self.local = Local(self.local_path, self.remote_path, self.logger, self.rclone, self.lock)
+
         if self.remote_type == 'drive':
-            self.remote = GoogleDrive(self.local_path, self.remote_path, self.logger, self.rclone)
+            self.remote = GoogleDrive(self.local_path, self.remote_path, self.logger, self.rclone, self.lock)
         else:
-            self.remote = Remote(self.local_path, self.remote_path, self.logger, self.rclone, self.every_minutes)
+            self.remote = Remote(self.local_path, self.remote_path, self.logger, self.rclone, self.lock, self.every_minutes)
 
         self.remote_history = queue.Queue()        
         self.local_history = queue.Queue()

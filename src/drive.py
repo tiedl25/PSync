@@ -14,11 +14,12 @@ class GoogleDrive:
     CLIENT_SECRET_FILE = 'client_secret_PSync.json'
     SCOPE = ['https://www.googleapis.com/auth/drive.activity', 'https://www.googleapis.com/auth/drive']
 
-    def __init__(self, local_path, remote_path, logger, rclone):
+    def __init__(self, local_path, remote_path, logger, rclone, lock):
         self.local_path = local_path
         self.remote_path = remote_path
         self.logger = logger
         self.rclone = rclone
+        self.lock = lock
 
     def create_service(self):
         print(self.CLIENT_SECRET_FILE, self.SCOPE, sep='-')
@@ -69,7 +70,7 @@ class GoogleDrive:
         for tmp in list(local_history.queue):
             if path == tmp: 
                 local_history.get()
-                self.logger.log(f'Drive: Skipping {change_item["name"]} because the change is caused by the local drive')
+                self.logger.log(f'Drive: Skipping {change_item["name"]} because the change is caused by the local drive', 'red')
                 return False
 
         return True
@@ -77,20 +78,21 @@ class GoogleDrive:
     def check_change(self, change_item, last_change_item, local_history, last_folder):
         # check if a file triggers multiple changes but only shows one action
         if last_change_item != None and change_item['id'] == last_change_item['id'] and change_item['timestamps']['activity_timestamp'] == last_change_item['timestamps']['activity_timestamp']:
-            self.logger.log(f'Drive: Skipping {change_item["name"]} because the previous change complied with it already')
+            self.logger.log(f'Drive: Skipping {change_item["name"]} because the previous change complied with it already', 'red')
             return False
 
         # check if the change is caused by a view on the file or a real change such as a rename/move/creation
         if (change_item['timestamps']['file_view'] != change_item['timestamps']['file_create'] and
             change_item['timestamps']['file_view'] > change_item['timestamps']['file_modify'] and
             change_item['timestamps']['file_view'] > (change_item['timestamps']['change_time'] - timedelta(0,2))):
-            self.logger.log(f'Drive: Skipping {change_item["name"]} because it\'s only a view on the file/folder')
+            self.logger.log(f'Drive: Skipping {change_item["name"]} because it\'s only a view on the file/folder', 'red')
             return False
 
         # check if the change is caused by a real file activity
         if change_item['timestamps']['activity_timestamp'] < (change_item['timestamps']['change_time'] - timedelta(0,2)):
             return False  
 
+        # check if the change is already captured within a change of the parent folder
         if not self.folder_check(change_item, last_folder):
             return False
 
@@ -220,9 +222,9 @@ class GoogleDrive:
                             p = p.removeprefix('/')
                             remote_history.put(p + ('/' if p not in ['', '/'] else '') + change_item['name'])
                             
-                            
-                        if change_item['folder'] and change_item['action'] == 'delete' and self.folder_check(change_item, last_folder):
+                        if change_item['folder'] and self.folder_check(change_item, last_folder):
                             last_folder = change_item    
+
                     last_change_item = change_item
 
             page_token = next_page_token
@@ -246,6 +248,13 @@ class GoogleDrive:
     def sync_changes(self, changes):
         while(True):
             change = changes.get()
+
+            # wait if local is performing an operation
+            while self.lock.lock == True:
+                time.sleep(0.1)
+
+            self.lock.lock = True
+
             if change['action'] == 'delete' and change['folder'] == True:
                 self.rclone.purge(change['path'], change['name'], True)
 
@@ -269,7 +278,8 @@ class GoogleDrive:
 
             elif change['action'] == 'move' and change['folder'] == False:
                 self.rclone.move(change['path'], change['name'], change['old_path'], True)
-                
+
+            self.lock.lock = False
             
 
 

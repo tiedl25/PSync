@@ -38,7 +38,7 @@ class Handler(FileSystemEventHandler):
 
         change_item = {'name' : path[1], 
                         'path' : path[0], 
-                        'action' : swap[event.event_type], 
+                        'action' : swap[event.event_type] if event.event_type in swap else 'nothing', 
                         'folder' : event.is_directory, 
                         'timestamp' : datetime.now().strftime(format)}
 

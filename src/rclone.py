@@ -75,6 +75,16 @@ class Rclone:
         self.logger.log(command)
         os.system(command)
 
+    def restore(self, dirpath, filename, local=False):
+        if local:
+            destpath = self.local_path + dirpath.removeprefix(self.remote_path)
+            output = subprocess.getoutput(f'echo -1 | trash-restore {destpath}/{filename}')
+            index = output.rfind('What file to restore [0..')+25
+            command = f'echo {output[index]} | trash-restore {destpath}/{filename}'
+        
+        self.logger.log(command)
+        os.system(command)
+
     def backsync(self):
         command = f'rclone sync {self.verbose}--delete-before "{self.remote_path}" "{self.local_path}"'
         self.logger.log(command)

@@ -121,7 +121,7 @@ class GoogleDrive:
         change_item['old_path'] = ''
         change_item['old_name'] = ''
         
-        if change_item['action'] in ['create', 'modify', 'restore']:
+        if change_item['action'] in ['create', 'modify']:
             change_item['action'] = 'sync'
         elif change_item['action'] == 'move':
             old_parent = activity['primaryActionDetail']['move']['removedParents'][0]['driveItem']['name'].removeprefix('items/')
@@ -134,7 +134,6 @@ class GoogleDrive:
                 change_item['action'] = 'delete'
                 change_item['path'] = change_item['old_path']
                 change_item['old_path'] = ''
-
         elif change_item['action'] == 'rename':
             change_item['old_name'] = activity['primaryActionDetail']['rename']['oldTitle']
 
@@ -249,35 +248,43 @@ class GoogleDrive:
         while(True):
             change = changes.get()
 
-            # wait if local is performing an operation
+            #wait if local is performing an operation
             while self.lock.lock == True:
                 time.sleep(0.1)
 
             self.lock.lock = True
 
-            if change['action'] == 'delete' and change['folder'] == True:
-                self.rclone.purge(change['path'], change['name'], True)
+            if change['folder'] == True:
+                if change['action'] == 'delete':
+                    self.rclone.purge(change['path'], change['name'], True)
 
-            elif change['action'] == 'delete' and change['folder'] == False:
-                self.rclone.delete(change['path'], change['name'], True)
+                elif change['action'] == 'sync':
+                    self.rclone.sync(change['path'], change['name'], True)
 
-            elif change['action'] == 'sync' and change['folder'] == True:
-                self.rclone.sync(change['path'], change['name'], True)
+                elif change['action'] == 'rename':
+                    self.rclone.rename(change['path'], change['name'], change['old_name'], True)
 
-            elif change['action'] == 'sync' and change['folder'] == False:
-                self.rclone.copy(change['path'], change['name'], True)
+                elif change['action'] == 'move':
+                    self.rclone.move(change['path'], change['name'], change['old_path'], True)
 
-            elif change['action'] == 'rename' and change['folder'] == True:
-                self.rclone.rename(change['path'], change['name'], change['old_name'], True)
+                elif change['action'] == 'restore':
+                    self.rclone.restore(change['path'], change['name'], True)
 
-            elif change['action'] == 'rename' and change['folder'] == False:
-                self.rclone.rename(change['path'], change['name'], change['old_name'], True)
+            else: 
+                if change['action'] == 'delete':
+                    self.rclone.delete(change['path'], change['name'], True)
 
-            elif change['action'] == 'move' and change['folder'] == True:
-                self.rclone.move(change['path'], change['name'], change['old_path'], True)
+                elif change['action'] == 'sync':
+                    self.rclone.copy(change['path'], change['name'], True)
 
-            elif change['action'] == 'move' and change['folder'] == False:
-                self.rclone.move(change['path'], change['name'], change['old_path'], True)
+                elif change['action'] == 'rename':
+                    self.rclone.rename(change['path'], change['name'], change['old_name'], True)
+
+                elif change['action'] == 'move':
+                    self.rclone.move(change['path'], change['name'], change['old_path'], True)
+
+                elif change['action'] == 'restore':
+                    self.rclone.restore(change['path'], change['name'], True)
 
             self.lock.lock = False
             

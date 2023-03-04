@@ -10,7 +10,6 @@ import os
 from os.path import basename
 import remote
 import drive
-import inotify.adapters
 import pathlib
 import threading
 import queue

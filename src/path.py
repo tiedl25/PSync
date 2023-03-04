@@ -58,8 +58,8 @@ class Path:
         if remote + ":" in remote_list[::2]:
             pos = remote_list.index(remote + ":")
             self.remote_type = remote_list[pos+1]
-            if self.remote_type != "drive":
-                raise argparse.ArgumentError(f"The type of the given remote {remote} is not 'drive', and therefore currently not supported")
+            #if self.remote_type != "drive":
+            #    raise argparse.ArgumentError(f"The type of the given remote {remote} is not 'drive', and therefore currently not supported")
         else: raise argparse.ArgumentTypeError(f'{remote} is not a valid remote')
         return s
 

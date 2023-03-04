@@ -16,12 +16,14 @@ class Psync:
         '''
         
         '''
-        if self.flags["backsync"]:
-            self.rclone.backsync()
-        if self.flags["resync"]:
-            self.rclone.bisync()          
         if self.flags["init"]:
             self.rclone.init()
+        elif self.flags["resync"]:
+            self.rclone.bisync()    
+        elif self.flags["backsync"]:
+            self.rclone.backsync()
+                  
+        
 
     def __init__(self):
         p = Path()

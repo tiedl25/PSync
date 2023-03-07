@@ -111,10 +111,15 @@ class Local:
 
 
     def check_change(self, change_item, remote_history, local_history, changes):
+        # check for files with 'nothing' as action
+        if change_item['action'] == 'nothing':
+            self.logger.log(f'Local: Skipping {change_item["name"]} because there\'s nothing to be done', 'red')
+            return False
+
         # check if the files with specific extensions should be excluded
         extension = pathlib.Path(change_item['name']).suffix
         if extension in self.extensions: 
-            self.logger.log(f'Local: Skipping {change_item["name"]} because of extension', 'green')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because of extension', 'red')
             return False
 
         # Needs to be done when also files with the .part extensions are ignored
@@ -123,11 +128,11 @@ class Local:
 
         # check if it's a hidden file
         if change_item['name'][0] in ['.', '#']:
-            self.logger.log(f'Local: Skipping {change_item["name"]} because it is a hidden file', 'green')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because it is a hidden file', 'red')
             return False
 
         if not self.remove_duplicates(change_item, changes):
-            self.logger.log(f'Local: Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete', 'green')
+            self.logger.log(f'Local: Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete', 'red')
             return False
             
         # check if the change was made by the remote drive 
@@ -136,7 +141,7 @@ class Local:
         for tmp in list(remote_history.queue):
             if path == tmp: 
                 remote_history.get()
-                self.logger.log(f'Local: Skipping {change_item["name"]} because the change is caused by the remote drive', 'green')
+                self.logger.log(f'Local: Skipping {change_item["name"]} because the change is caused by the remote drive', 'red')
                 return False
 
         local_history.put(change_item['path'] + '/' + change_item['name'])
@@ -148,7 +153,7 @@ class Local:
             parent = f'{change["path"]}/{change["name"]}'
             if child != parent and child.startswith(parent):
                 changes.get()
-                self.logger.log(f'Local: Skipping {tmp["name"]} because it is a child', 'green')
+                self.logger.log(f'Local: Skipping {tmp["name"]} because it is a child', 'red')
 
     def remove_duplicates(self, change, changes):
         new_changes = queue.Queue()
@@ -161,7 +166,7 @@ class Local:
                     keep_change = False
                 elif (tmp['action'] and change['action']) in ['create', 'modify', 'close'] or (tmp['action'] and change['action']) == 'delete':
                     keep_change = True
-                    self.logger.log(f'Local: Skipping {tmp["name"]} because it is a duplicate', 'green')
+                    self.logger.log(f'Local: Skipping {tmp["name"]} because it is a duplicate', 'red')
                 else:
                     changes.put(tmp)        
         return keep_change

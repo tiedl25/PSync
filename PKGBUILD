@@ -6,10 +6,10 @@
 # Maintainer: Your Name <youremail@domain.com>
 pkgname='psync'
 _name=${pkgname#python-}#Note that a custom _name variable is used instead of pkgname since Python packages are generally prefixed with python-.
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 epoch=
-pkgdesc="Implementation of Rclone and Inotify to perform file syncing between local and remote by monitoring file changes."
+pkgdesc="Implementation of rclone and watchdog to perform file syncing between local and remote by monitoring file changes."
 arch=('x86_64')
 url="https://github.com/tiedl25/PSync"
 license=('GPL')
@@ -29,11 +29,11 @@ validpgpkeys=()
 #}
 
 build() {
-    cd "psync-0.1.0"
+    cd "psync-0.2.0"
     python -m build --wheel --no-isolation
 }
 
 package() {
-    cd "psync-0.1.0"
+    cd "psync-0.2.0"
     python -m installer --destdir="$pkgdir" dist/*.whl
 }

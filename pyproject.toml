@@ -1,36 +1,32 @@
 [project]
 name = 'psync'
-version = '0.2.0'
+version = '0.2.4'
 authors = [
     {name='Max Tiedl', email='max.tiedl@gmx.de'},
 ]
-description = Sync your local filesystem with a rclone remote by using watchdog for local file changes.
+description = 'Sync your local filesystem with a rclone remote by using watchdog for local file changes.'
 readme = 'README.md'
 requires-python = '>=3.3'
 classifiers = [
-    Programming Language :: Python :: 3
-    License :: OSI Approved :: GNU General Public License v3 (GPLv3)
-    Operating System :: POSIX :: Linux
+    'Programming Language :: Python :: 3',
+    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+    'Operating System :: POSIX :: Linux',
 ]
 dependencies = [
-    watchdog
-    trash-cli
-    numpy
-    schedule
-    os 
-    subprocess
-    time
-    threading
-    pathlib
-    datetime
-    queue
-    logging
-    sys
-    re
-    argparse
-    io
+    'watchdog',
+    'trash-cli',
+    'numpy',
+    'schedule',
+    'pathlib',
+    'datetime',
+    'argparse',
 ]
-
+[project.urls]
+'Homepage' = 'https://github.com/tiedl25/PSync'
+[tool.setuptools]
+package-dir = {'' = 'src'} 
+[project.scripts]
+psync = 'psync.main:main'
 [build-system]
 requires = [
     "setuptools>=42",

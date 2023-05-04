@@ -17,7 +17,9 @@ class Rclone:
             destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}/{filename}"'
             loc = 'Local: '
-        self.logger.log(loc + command, 'green')
+
+        output = loc + f'Copy "{dirpath}/{filename}" to "{destpath}/{filename}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def copy(self, dirpath, filename, local=False):
@@ -30,7 +32,8 @@ class Rclone:
             command = f'rclone copy {self.verbose}"{dirpath}/{filename}" "{destpath}"'
             loc = 'Local: '
 
-        self.logger.log(loc + command, 'green')
+        output = loc + f'Copy "{dirpath}/{filename}" to "{destpath}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def purge(self, dirpath, foldername, local=False):
@@ -42,8 +45,9 @@ class Rclone:
             destpath = self.remote_path + dirpath.removeprefix(self.local_path)
             command = f'rclone purge {self.verbose}"{destpath}/{foldername}"'
             loc = 'Local: '
-        
-        self.logger.log(loc + command, 'green')
+
+        output = loc + f'Delete "{destpath}/{foldername}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def delete(self, dirpath, filename, local=False):
@@ -56,7 +60,8 @@ class Rclone:
             command = f'rclone delete {self.verbose}"{destpath}/{filename}"'
             loc = 'Local: '
 
-        self.logger.log(loc + command, 'green')
+        output = loc + f'Delete "{destpath}/{filename}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def rename(self, dirpath, filename, oldname, local=False):
@@ -69,13 +74,15 @@ class Rclone:
             command = f'rclone moveto {self.verbose}"{destpath}/{oldname}" "{destpath}/{filename}"'
             loc = 'Local: '
         
-        self.logger.log(loc + command, 'green')
+        output = loc + f'Rename "{destpath}/{oldname}" to "{destpath}/{filename}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def move(self, dirpath, filename, oldpath, local=False):
         if local:
             destpath = self.local_path + dirpath.removeprefix(self.remote_path)
             olddestpath = self.local_path + oldpath.removeprefix(self.remote_path)
+            if not os.path.exists(destpath): os.makedirs(destpath)
             command = f'mv "{olddestpath}/{filename}" "{destpath}/{filename}"'
             loc = 'Remote: '
         else:
@@ -84,18 +91,20 @@ class Rclone:
             command = f'rclone moveto {self.verbose}"{olddestpath}/{filename}" "{destpath}/{filename}"'
             loc = 'Local: '
 
-        self.logger.log(loc + command, 'green')
+        output = loc + f'Move "{olddestpath}/{filename}" to "{destpath}/{filename}"'
+        self.logger.log(output, 'green')
         os.system(command)
 
     def restore(self, dirpath, filename, local=False):
         if local:
             destpath = self.local_path + dirpath.removeprefix(self.remote_path)
-            output = subprocess.getoutput(f'echo -1 | trash-restore {destpath}/{filename}')
+            output = subprocess.getoutput(f'echo -1 | trash-restore "{destpath}/{filename}"')
             index = output.rfind('What file to restore [0..')+25
-            command = f'echo {output[index]} | trash-restore {destpath}/{filename}'
+            command = f'echo {output[index]} | trash-restore "{destpath}/{filename}"'
             loc = 'Remote: '
         
-        self.logger.log(loc + command, 'green')
+        output = loc + f'Restore "{destpath}/{filename}"'
+        self.logger.log(output, 'green')
         subprocess.getoutput(command)
 
     def backsync(self):

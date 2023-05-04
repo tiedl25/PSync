@@ -17,7 +17,7 @@ from logger import Logger
 from rclone import Rclone
 from datetime import datetime
 
-class Handler(FileSystemEventHandler):
+class LocalHandler(FileSystemEventHandler):
     def __init__(self, changes):
         self.changes = changes
         super().__init__()
@@ -66,6 +66,11 @@ class Local:
         self.lock = lock
 
     def perform_operation(self, change_item):
+        # wait until backsync is finished
+        while self.lock.lock == True:
+            time.sleep(0.1)
+
+        # while locked remote cannot perform any operation
         self.lock.lock = True
 
         if change_item['folder']:
@@ -108,12 +113,10 @@ class Local:
 
         self.lock.lock = False
 
-
-
-    def check_change(self, change_item, remote_history, local_history, changes):
+    def check_change_item(self, change_item, remote_history, local_history, changes):
         # check for files with 'nothing' as action
         if change_item['action'] == 'nothing':
-            self.logger.log(f'Local: Skipping {change_item["name"]} because there\'s nothing to be done', 'red')
+            #self.logger.log(f'Local: Skipping {change_item["name"]} because there\'s nothing to be done', 'red')
             return False
 
         # check if the files with specific extensions should be excluded
@@ -131,21 +134,25 @@ class Local:
             self.logger.log(f'Local: Skipping {change_item["name"]} because it is a hidden file', 'red')
             return False
 
+        # check for duplicates
         if not self.remove_duplicates(change_item, changes):
             self.logger.log(f'Local: Skipping {change_item["name"]} because it shows a create/delete action pair, which makes both operations obsolete', 'red')
             return False
             
+        return True
+
+    def check_remote_changes(self, change_item, remote_history):
         # check if the change was made by the remote drive 
         path = change_item['path'].removeprefix(self.local_path).removeprefix('/')
         path = f'{path}/{change_item["name"]}' if path != '' else change_item['name']
+        
         for tmp in list(remote_history.queue):
             if path == tmp: 
                 remote_history.get()
                 self.logger.log(f'Local: Skipping {change_item["name"]} because the change is caused by the remote drive', 'red')
                 return False
 
-        local_history.put(change_item['path'] + '/' + change_item['name'])
-        return True
+        return True   
 
     def remove_children(self, change, changes):
         for tmp in list(changes.queue):
@@ -176,7 +183,7 @@ class Local:
                             format='%(asctime)s - %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S')
 
-        event_handler = Handler(changes)
+        event_handler = LocalHandler(changes)
         observer = Observer()
         observer.schedule(event_handler, self.local_path, recursive=True)
         observer.start()
@@ -187,21 +194,19 @@ class Local:
             observer.stop()
             observer.join()
 
-    def sync_service(self, changes, remote_history, local_history):
-        locked = False
-
+    def sync_service(self, change_items, remote_history, local_history):
         while(True):
-            change_item = changes.get()
+            change_item = change_items.get()
 
-            # wait until backsync is finished
-            while self.lock.lock == True:
-                time.sleep(0.1)
-                locked = True
+            if not self.check_change_item(change_item, remote_history, local_history, change_items):
+                self.remove_children(change_item, change_items)
+                continue
 
-            #print(change_item)
-            if self.check_change(change_item, remote_history, local_history, changes):
+            if self.check_remote_changes(change_item, remote_history):
+                local_history.put(change_item['path'] + '/' + change_item['name'])   
                 self.perform_operation(change_item)
-            self.remove_children(change_item, changes)
+            
+            self.remove_children(change_item, change_items)
 
             #Local.lock = True if changes.qsize() > 0 else False
 

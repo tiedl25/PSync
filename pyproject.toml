@@ -1,6 +1,6 @@
 [project]
 name = 'psync'
-version = '0.2.4'
+version = '0.2.10'
 authors = [
     {name='Max Tiedl', email='max.tiedl@gmx.de'},
 ]
@@ -13,13 +13,13 @@ classifiers = [
     'Operating System :: POSIX :: Linux',
 ]
 dependencies = [
-    'watchdog',
-    'trash-cli',
-    'numpy',
-    'schedule',
-    'pathlib',
-    'datetime',
-    'argparse',
+    "watchdog>=3.0",
+    "schedule>=1.2",
+    "google-api-python-client>=2.86",
+    "google_auth_oauthlib>=1.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+
 ]
 [project.urls]
 'Homepage' = 'https://github.com/tiedl25/PSync'
@@ -30,6 +30,17 @@ psync = 'psync.main:main'
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel"
+    "wheel",
+    "watchdog>=3.0",
+    "schedule>=1.2",
+    "google-api-python-client>=2.86",
+    "google_auth_oauthlib>=1.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
 ]
 build-backend = "setuptools.build_meta"
+[options]
+install_requires = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]

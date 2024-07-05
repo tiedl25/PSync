@@ -1,3 +1,5 @@
+### This project is no longer maintained
+
 # PSync
 
 This is an implementation of rclone and the python module watchdog to perform file syncing between local and remote filesystems by monitoring the local file changes. 
@@ -18,5 +20,3 @@ To use this cli, one has to first setup a remote via rclone. After that it can b
 * For more invormation about the changes use the `--verbose`/`-v` parameter.
 
 The script detects if you're using a GoogleDrive remote and switches to the native implementation instead of the default one. The periodic backsyncing is therefore disabled.
-
-Currently under active development
